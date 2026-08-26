@@ -1,0 +1,27 @@
+aws_region       = "us-east-2"
+project_name     = "java-tron-security-review"
+target_ref       = "develop"
+schedule_enabled = false
+
+# Set this to the reviewed security-system Git commit after push-image.sh succeeds.
+scanner_image_tag = "REPLACE_WITH_REVIEWED_GIT_SHA"
+
+# Default: OpenAI API key stored in AWS Secrets Manager.
+scan_provider = "openai"
+
+# Optional authorized knowledge base. Leave empty to disable.
+# knowledge_base_repository_url = "https://github.com/OWNER/REPOSITORY.git"
+
+# Optional: route inference through Amazon Bedrock and the CodeBuild IAM role.
+# scan_provider       = "amazon-bedrock"
+# scan_model_override = "openai.gpt-5.6-sol"
+# bedrock_model_arns = [
+#   "REPLACE_WITH_APPROVED_BEDROCK_MODEL_OR_INFERENCE_PROFILE_ARN",
+# ]
+
+# Optional VPC attachment. Subnets need HTTPS egress to GitHub and the selected model endpoint.
+# vpc_id             = "vpc-..."
+# subnet_ids         = ["subnet-...", "subnet-..."]
+# security_group_ids = ["sg-..."]
+
+# alert_email = "security-team@example.com"

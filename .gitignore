@@ -1,0 +1,23 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.coverage
+dist/
+build/
+*.egg-info/
+
+# Scan state can contain source excerpts and vulnerability details.
+var/*
+!var/.gitkeep
+
+.env
+deploy/server/jtsr.env
+.DS_Store
+
+# AWS/Terraform local state and deployment inputs can contain account metadata or secrets.
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!terraform.tfvars.example

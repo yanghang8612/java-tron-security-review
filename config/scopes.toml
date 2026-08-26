@@ -1,0 +1,116 @@
+[[scopes]]
+id = "vm-execution"
+description = "TVM execution, energy, precompiles, child state and fork-gated behavior"
+risk = "critical"
+rotation = true
+paths = [
+  "actuator/src/main/java/org/tron/core/vm",
+  "actuator/src/main/java/org/tron/core/actuator/VMActuator.java",
+  "common/src/main/java/org/tron/core/vm",
+]
+patterns = [
+  "actuator/src/main/java/org/tron/core/vm/**",
+  "actuator/src/main/java/org/tron/core/actuator/VMActuator.java",
+  "common/src/main/java/org/tron/core/vm/**",
+]
+
+[[scopes]]
+id = "state-consensus"
+description = "Block validation, transaction lifecycle, snapshots, reorgs and DPoS/PBFT"
+risk = "critical"
+rotation = true
+paths = [
+  "framework/src/main/java/org/tron/core/db",
+  "chainbase/src/main/java/org/tron",
+  "consensus/src/main/java/org/tron",
+]
+patterns = [
+  "framework/src/main/java/org/tron/core/db/**",
+  "chainbase/src/main/java/org/tron/**",
+  "consensus/src/main/java/org/tron/**",
+]
+
+[[scopes]]
+id = "authorization-crypto"
+description = "Signatures, permissions, keystores, shielded paths and cryptographic preconditions"
+risk = "critical"
+rotation = true
+paths = [
+  "crypto/src/main/java/org/tron",
+  "chainbase/src/main/java/org/tron/core/capsule/TransactionCapsule.java",
+  "framework/src/main/java/org/tron/keystore",
+  "framework/src/main/java/org/tron/core/zen",
+]
+patterns = [
+  "crypto/src/main/java/org/tron/**",
+  "**/TransactionCapsule.java",
+  "**/keystore/**",
+  "**/zksnark/**",
+  "**/zen/**",
+  "**/shielded/**",
+]
+
+[[scopes]]
+id = "p2p-rpc"
+description = "Untrusted peer, HTTP, gRPC and JSON-RPC input and resource limits"
+risk = "high"
+rotation = true
+paths = [
+  "framework/src/main/java/org/tron/core/net",
+  "framework/src/main/java/org/tron/core/services",
+]
+patterns = [
+  "framework/src/main/java/org/tron/core/net/**",
+  "framework/src/main/java/org/tron/core/services/**",
+  "protocol/src/main/protos/**",
+]
+
+[[scopes]]
+id = "native-state-transitions"
+description = "Actuators, staking, voting, rewards, exchanges and other native mutations"
+risk = "critical"
+rotation = true
+paths = [
+  "actuator/src/main/java/org/tron/core/actuator",
+]
+patterns = [
+  "actuator/src/main/java/org/tron/core/actuator/**",
+]
+
+[[scopes]]
+id = "supply-chain-operations"
+description = "Build logic, workflows, containers, plugins, configuration and administrative tools"
+risk = "high"
+rotation = true
+paths = [
+  ".github",
+  "docker",
+  "plugins/src/main/java",
+  "gradle",
+]
+patterns = [
+  ".github/**",
+  "docker/**",
+  "plugins/**",
+  "gradle/**",
+  "**/build.gradle",
+  "build.gradle",
+  "settings.gradle",
+  "gradle.properties",
+]
+
+[[scopes]]
+id = "protocol-configuration"
+description = "Wire schemas, node defaults, proposal gates and network-specific configuration"
+risk = "high"
+rotation = true
+paths = [
+  "protocol/src",
+  "common/src/main/resources",
+  "framework/src/main/java/org/tron/core/config",
+]
+patterns = [
+  "protocol/src/**",
+  "common/src/main/resources/**",
+  "framework/src/main/java/org/tron/core/config/**",
+]

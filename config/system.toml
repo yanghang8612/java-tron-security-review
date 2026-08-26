@@ -1,0 +1,19 @@
+[system]
+name = "java-tron-security-review"
+cli_package = "@openai/codex-security@0.1.16"
+default_target = "../java-tron"
+output_root = "var/scans"
+default_auth = "auto"
+advisory = true
+
+knowledge_bases = [
+  "knowledge/threat-model.md",
+]
+
+optional_knowledge_bases = [
+  "../java-tron-kb/meta/audit-perspective.md",
+  "../java-tron-kb/invariants",
+]
+
+scan_prompt = "prompts/scan.md"
+post_scan_prompt = "prompts/post-scan.md"

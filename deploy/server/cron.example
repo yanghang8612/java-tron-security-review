@@ -1,0 +1,4 @@
+# Optional fallback for a server where systemd timers are not used.
+# Install as /etc/cron.d/java-tron-security-review only after installing the service.
+# This assumes the host uses UTC. The service itself prevents overlapping scans.
+17 18 * * * root /usr/bin/systemctl start java-tron-security-review.service

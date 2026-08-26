@@ -1,0 +1,28 @@
+# Copy this file to java-tron's .github/workflows directory after publishing the security-system
+# repository. Replace YOUR_ORG and pin system_ref to a reviewed full commit SHA.
+name: Codex Security PR review
+
+on:
+  pull_request:
+    branches: [develop, "release_**"]
+    types: [opened, synchronize, reopened]
+    paths-ignore:
+      - "**/*.md"
+      - "docs/**"
+
+jobs:
+  codex-security:
+    if: github.event.pull_request.head.repo.full_name == github.repository && github.actor != 'dependabot[bot]'
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    uses: YOUR_ORG/java-tron-security-review/.github/workflows/reusable-pr.yml@main
+    with:
+      system_repository: YOUR_ORG/java-tron-security-review
+      # Replace this value with a reviewed full commit SHA before enabling the workflow.
+      system_ref: REPLACE_WITH_FULL_COMMIT_SHA
+      base_sha: ${{ github.event.pull_request.base.sha }}
+      head_sha: ${{ github.event.pull_request.head.sha }}
+    secrets:
+      CODEX_SECURITY_API_KEY: ${{ secrets.CODEX_SECURITY_API_KEY }}

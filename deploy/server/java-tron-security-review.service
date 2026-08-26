@@ -1,0 +1,23 @@
+[Unit]
+Description=Daily Codex Security static review of java-tron TVM
+Documentation=https://learn.chatgpt.com/docs/security/cli/reference
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+OnFailure=java-tron-security-review-notify@%n.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/etc/java-tron-security-review/jtsr.env
+ExecStart=/usr/local/libexec/java-tron-security-review/run-daily-tvm
+UMask=0077
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=4h
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full

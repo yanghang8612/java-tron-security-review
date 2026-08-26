@@ -1,0 +1,148 @@
+name: Reusable java-tron PR security review
+
+on:
+  workflow_call:
+    inputs:
+      system_repository:
+        description: Published owner/repository of this control plane
+        required: true
+        type: string
+      system_ref:
+        description: Reviewed full commit SHA of the control plane
+        required: true
+        type: string
+      base_sha:
+        required: true
+        type: string
+      head_sha:
+        required: true
+        type: string
+      kb_repository:
+        description: Optional authorized owner/repository knowledge base
+        required: false
+        type: string
+      kb_ref:
+        required: false
+        default: master
+        type: string
+    secrets:
+      CODEX_SECURITY_API_KEY:
+        required: true
+
+jobs:
+  review:
+    if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      actions: read
+      contents: read
+      security-events: write
+    steps:
+      - name: Check out target PR head
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ github.repository }}
+          ref: ${{ inputs.head_sha }}
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out security control plane
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.system_repository }}
+          ref: ${{ inputs.system_ref }}
+          path: security-system
+          persist-credentials: false
+
+      - name: Check out java-tron knowledge base
+        if: ${{ inputs.kb_repository != '' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ inputs.kb_repository }}
+          ref: ${{ inputs.kb_ref }}
+          path: java-tron-kb
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "26"
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+
+      - name: Install Codex Security outside the checkouts
+        run: |
+          set -euo pipefail
+          npm install \
+            --prefix "$RUNNER_TEMP/codex-security" \
+            --ignore-scripts \
+            --no-audit \
+            --no-fund \
+            @openai/codex-security@0.1.16
+          "$RUNNER_TEMP/codex-security/node_modules/.bin/codex-security" --version
+
+      - name: Install control plane
+        run: python3 -m pip install --no-deps -e security-system
+
+      - name: Run advisory diff review
+        id: scan
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.CODEX_SECURITY_API_KEY }}
+        run: |
+          set -euo pipefail
+          jtsr scan \
+            --mode pr \
+            --target "$GITHUB_WORKSPACE/target" \
+            --base "${{ inputs.base_sha }}" \
+            --head "${{ inputs.head_sha }}" \
+            --output-root "$RUNNER_TEMP/security-scans" \
+            --run-id "${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-pr" \
+            --auth api-key \
+            --cli-bin "$RUNNER_TEMP/codex-security/node_modules/.bin/codex-security"
+
+      - name: Locate SARIF exports
+        id: sarif
+        if: always()
+        run: |
+          set -euo pipefail
+          if find "$RUNNER_TEMP/security-scans" -name results.sarif -print -quit | grep -q .; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload SARIF to target code scanning
+        if: ${{ always() && steps.sarif.outputs.exists == 'true' }}
+        uses: github/codeql-action/upload-sarif@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4
+        with:
+          sarif_file: ${{ runner.temp }}/security-scans
+          category: codex-security
+
+      - name: Upload private detailed evidence
+        if: ${{ always() && github.event.repository.private }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: codex-security-pr-${{ github.run_id }}-${{ github.run_attempt }}
+          path: ${{ runner.temp }}/security-scans
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Record advisory outcome
+        if: always()
+        env:
+          SCAN_OUTCOME: ${{ steps.scan.outcome }}
+          SARIF_EXISTS: ${{ steps.sarif.outputs.exists }}
+        run: |
+          {
+            echo "### Codex Security PR review"
+            echo ""
+            echo "- Scan outcome: $SCAN_OUTCOME"
+            echo "- SARIF produced: $SARIF_EXISTS"
+            echo "- Policy: advisory; High/Critical candidates require independent and human verification"
+          } >> "$GITHUB_STEP_SUMMARY"

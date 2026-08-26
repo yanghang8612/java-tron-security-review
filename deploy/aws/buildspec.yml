@@ -1,0 +1,106 @@
+version: 0.2
+
+env:
+  shell: bash
+
+phases:
+  install:
+    commands:
+      - |
+        set -euo pipefail
+        test "$(id -u)" -eq 0
+        test -n "${CODEBUILD_SRC_DIR:-}"
+        codex-security --version
+        jtsr --version
+        install -d -o root -g root -m 0755 /tmp/jtsr-work
+        install -d -o scanner -g scanner -m 0700 /tmp/jtsr-work/output
+        install -d -o root -g root -m 0700 "$CODEBUILD_SRC_DIR/security-scans"
+
+  pre_build:
+    commands:
+      - |
+        set -euo pipefail
+        git -c credential.helper= init /tmp/jtsr-work/target
+        git -C /tmp/jtsr-work/target remote add origin "$TARGET_REPOSITORY_URL"
+        git -c credential.helper= -C /tmp/jtsr-work/target fetch \
+          --depth=1 --no-tags origin "$TARGET_REF"
+        git -C /tmp/jtsr-work/target checkout --detach FETCH_HEAD
+        git -C /tmp/jtsr-work/target rev-parse HEAD > /tmp/jtsr-work/target-sha
+
+        if [ -n "${KB_REPOSITORY_URL:-}" ]; then
+          git -c credential.helper= init /tmp/jtsr-work/java-tron-kb
+          git -C /tmp/jtsr-work/java-tron-kb remote add origin "$KB_REPOSITORY_URL"
+          git -c credential.helper= -C /tmp/jtsr-work/java-tron-kb fetch \
+            --depth=1 --no-tags origin "$KB_REF"
+          git -C /tmp/jtsr-work/java-tron-kb checkout --detach FETCH_HEAD
+        fi
+
+        chmod -R a-w /tmp/jtsr-work/target
+        if [ -d /tmp/jtsr-work/java-tron-kb ]; then
+          chmod -R a-w /tmp/jtsr-work/java-tron-kb
+        fi
+
+  build:
+    run-as: scanner
+    commands:
+      - |
+        set -euo pipefail
+        git config --global --add safe.directory /tmp/jtsr-work/target
+        if [ -d /tmp/jtsr-work/java-tron-kb ]; then
+          git config --global --add safe.directory /tmp/jtsr-work/java-tron-kb
+        fi
+        TARGET_SHA="$(cat /tmp/jtsr-work/target-sha)"
+        RUN_ID="daily-tvm-${CODEBUILD_BUILD_NUMBER}-${TARGET_SHA:0:12}"
+        ARGS=(
+          --mode "${JTSR_MODE:-daily-tvm}"
+          --target /tmp/jtsr-work/target
+          --head "$TARGET_SHA"
+          --scope "${JTSR_SCOPE:-vm-execution}"
+          --output-root /tmp/jtsr-work/output
+          --run-id "$RUN_ID"
+          --cli-bin /usr/local/bin/codex-security
+        )
+
+        case "$SCAN_PROVIDER" in
+          openai)
+            ARGS+=(--auth api-key)
+            ;;
+          amazon-bedrock)
+            test -n "${SCAN_MODEL_OVERRIDE:-}"
+            ARGS+=(--provider amazon-bedrock --model "$SCAN_MODEL_OVERRIDE")
+            ;;
+          *)
+            echo "Unsupported SCAN_PROVIDER: $SCAN_PROVIDER" >&2
+            exit 1
+            ;;
+        esac
+
+        if [ -n "${KB_REPOSITORY_URL:-}" ]; then
+          if [ -f /tmp/jtsr-work/java-tron-kb/meta/audit-perspective.md ]; then
+            ARGS+=(--knowledge-base /tmp/jtsr-work/java-tron-kb/meta/audit-perspective.md)
+          fi
+          if [ -d /tmp/jtsr-work/java-tron-kb/invariants ]; then
+            ARGS+=(--knowledge-base /tmp/jtsr-work/java-tron-kb/invariants)
+          fi
+        fi
+
+        SCAN_EXIT=0
+        jtsr scan "${ARGS[@]}" || SCAN_EXIT=$?
+        printf '%s\n' "$SCAN_EXIT" > /tmp/jtsr-work/scan-exit-code
+        printf '%s\n' "$TARGET_SHA" > /tmp/jtsr-work/output/target-revision.txt
+
+  post_build:
+    commands:
+      - |
+        set -euo pipefail
+        cp -a /tmp/jtsr-work/output/. "$CODEBUILD_SRC_DIR/security-scans/"
+        SCAN_EXIT="$(cat /tmp/jtsr-work/scan-exit-code 2>/dev/null || printf '1')"
+        if [ "$SCAN_EXIT" -ne 0 ]; then
+          echo "Codex Security scan completed with exit code $SCAN_EXIT" >&2
+          exit "$SCAN_EXIT"
+        fi
+
+artifacts:
+  files:
+    - security-scans/**/*
+  discard-paths: no

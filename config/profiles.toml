@@ -1,0 +1,48 @@
+[profiles.triage]
+description = "Fast evidence-oriented review for every changed surface"
+provider = "openai"
+model = "gpt-5.6-terra"
+effort = "high"
+scan_mode = "standard"
+modes = ["pr", "daily-tvm"]
+minimum_risk = "low"
+max_cost = 3.0
+prompt = "prompts/scan.md"
+
+[profiles.primary]
+description = "Primary investigator for nightly and manual reviews"
+provider = "openai"
+model = "gpt-5.6-sol"
+effort = "xhigh"
+scan_mode = "standard"
+modes = ["nightly", "manual"]
+minimum_risk = "low"
+max_cost = 8.0
+prompt = "prompts/scan.md"
+
+[profiles.verifier]
+description = "Independent falsification pass for high-risk changes"
+provider = "openai"
+model = "gpt-5.6-sol"
+effort = "max"
+scan_mode = "standard"
+modes = ["pr", "daily-tvm", "nightly"]
+minimum_risk = "high"
+max_cost = 6.0
+prompt = "prompts/skeptic.md"
+
+[profiles.deep]
+description = "Rotating deep review of one critical subsystem"
+provider = "openai"
+model = "gpt-5.6-sol"
+effort = "max"
+scan_mode = "deep"
+modes = ["weekly", "release"]
+minimum_risk = "low"
+max_cost = 25.0
+workers = 2
+subagents = 0
+stop_after_no_new = 3
+max_discovery_runs = 10
+max_time_hours = 2.0
+prompt = "prompts/scan.md"

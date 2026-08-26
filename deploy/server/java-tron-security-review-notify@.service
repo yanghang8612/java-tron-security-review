@@ -1,0 +1,8 @@
+[Unit]
+Description=Report java-tron security-review failure for %i
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/java-tron-security-review/jtsr.env
+ExecStart=/usr/local/libexec/java-tron-security-review/notify-failure %i
+UMask=0077

@@ -1,0 +1,186 @@
+name: java-tron security campaign
+
+on:
+  schedule:
+    - cron: "17 18 * * *" # Daily TVM path scan, 02:17 Asia/Shanghai
+    - cron: "41 19 * * 6" # Weekly deep rotation, Sunday 03:41 Asia/Shanghai
+  workflow_dispatch:
+    inputs:
+      target_repository:
+        description: Repository to scan
+        required: true
+        default: tronprotocol/java-tron
+        type: string
+      target_ref:
+        description: Exact branch, tag, or preferably full commit SHA
+        required: true
+        default: develop
+        type: string
+      mode:
+        description: Scan mode
+        required: true
+        default: manual
+        type: choice
+        options:
+          - manual
+          - daily-tvm
+          - nightly
+          - weekly
+          - release
+      weekly_scope:
+        description: Optional configured weekly scope id
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-campaign-${{ github.event_name }}-${{ inputs.target_repository || 'tronprotocol/java-tron' }}
+  cancel-in-progress: false
+
+env:
+  TARGET_REPOSITORY: ${{ inputs.target_repository || 'tronprotocol/java-tron' }}
+  TARGET_REF: ${{ inputs.target_ref || 'develop' }}
+  SCAN_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || (github.event.schedule == '41 19 * * 6' && 'weekly' || 'daily-tvm') }}
+  CODEX_SECURITY_VERSION: "0.1.16"
+  KB_REPOSITORY: ${{ vars.JTSR_KB_REPOSITORY }}
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 210
+    steps:
+      - name: Check out security control plane
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          path: security-system
+          persist-credentials: false
+
+      - name: Check out target revision
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ env.TARGET_REPOSITORY }}
+          ref: ${{ env.TARGET_REF }}
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Check out java-tron knowledge base
+        if: ${{ env.KB_REPOSITORY != '' }}
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ env.KB_REPOSITORY }}
+          ref: master
+          path: java-tron-kb
+          persist-credentials: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
+        with:
+          node-version: "26"
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7
+        with:
+          python-version: "3.14"
+
+      - name: Install Codex Security outside the checkouts
+        run: |
+          set -euo pipefail
+          npm install \
+            --prefix "$RUNNER_TEMP/codex-security" \
+            --ignore-scripts \
+            --no-audit \
+            --no-fund \
+            "@openai/codex-security@${CODEX_SECURITY_VERSION}"
+          "$RUNNER_TEMP/codex-security/node_modules/.bin/codex-security" --version
+
+      - name: Install control plane
+        run: python3 -m pip install --no-deps -e security-system
+
+      - name: Prepare immutable scan inputs
+        id: prepare
+        env:
+          WEEKLY_SCOPE: ${{ inputs.weekly_scope }}
+        run: |
+          set -euo pipefail
+          HEAD_SHA="$(git -C target rev-parse HEAD)"
+          BASE_SHA=""
+          if [ "$SCAN_MODE" = "nightly" ]; then
+            BASE_SHA="$(git -C target rev-list -1 --before='26 hours ago' "$HEAD_SHA" | head -n 1)"
+            if [ -z "$BASE_SHA" ]; then
+              BASE_SHA="$(git -C target rev-parse "${HEAD_SHA}^" 2>/dev/null || echo "$HEAD_SHA")"
+            fi
+          fi
+          RUN_ID="${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}-${SCAN_MODE}"
+          echo "head_sha=$HEAD_SHA" >> "$GITHUB_OUTPUT"
+          echo "base_sha=$BASE_SHA" >> "$GITHUB_OUTPUT"
+          echo "run_id=$RUN_ID" >> "$GITHUB_OUTPUT"
+          echo "weekly_scope=${WEEKLY_SCOPE:-}" >> "$GITHUB_OUTPUT"
+
+      - name: Run advisory campaign
+        id: scan
+        continue-on-error: true
+        env:
+          OPENAI_API_KEY: ${{ secrets.CODEX_SECURITY_API_KEY }}
+          BASE_SHA: ${{ steps.prepare.outputs.base_sha }}
+          HEAD_SHA: ${{ steps.prepare.outputs.head_sha }}
+          RUN_ID: ${{ steps.prepare.outputs.run_id }}
+          WEEKLY_SCOPE: ${{ steps.prepare.outputs.weekly_scope }}
+        run: |
+          set -euo pipefail
+          ARGS=(
+            --mode "$SCAN_MODE"
+            --target "$GITHUB_WORKSPACE/target"
+            --head "$HEAD_SHA"
+            --output-root "$RUNNER_TEMP/security-scans"
+            --run-id "$RUN_ID"
+            --auth api-key
+            --cli-bin "$RUNNER_TEMP/codex-security/node_modules/.bin/codex-security"
+          )
+          if [ "$SCAN_MODE" = "nightly" ]; then
+            ARGS+=(--base "$BASE_SHA")
+          fi
+          if [ "$SCAN_MODE" = "weekly" ] && [ -n "$WEEKLY_SCOPE" ]; then
+            ARGS+=(--scope "$WEEKLY_SCOPE")
+          fi
+          jtsr scan "${ARGS[@]}"
+
+      - name: Locate SARIF exports
+        id: sarif
+        if: always()
+        env:
+          RUN_ID: ${{ steps.prepare.outputs.run_id }}
+        run: |
+          set -euo pipefail
+          if find "$RUNNER_TEMP/security-scans/$RUN_ID" -name results.sarif -print -quit | grep -q .; then
+            echo "exists=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Upload private campaign evidence
+        if: ${{ always() && github.event.repository.private }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: codex-security-${{ steps.prepare.outputs.run_id }}
+          path: ${{ runner.temp }}/security-scans/${{ steps.prepare.outputs.run_id }}
+          if-no-files-found: warn
+          retention-days: 14
+
+      - name: Record advisory outcome
+        if: always()
+        env:
+          SCAN_OUTCOME: ${{ steps.scan.outcome }}
+          SARIF_EXISTS: ${{ steps.sarif.outputs.exists }}
+        run: |
+          {
+            echo "### Codex Security campaign"
+            echo ""
+            echo "- Mode: $SCAN_MODE"
+            echo "- Target revision: ${{ steps.prepare.outputs.head_sha }}"
+            echo "- Scan step outcome: $SCAN_OUTCOME"
+            echo "- SARIF produced: $SARIF_EXISTS"
+            echo "- Policy: advisory; inspect private artifacts and coverage before triage"
+          } >> "$GITHUB_STEP_SUMMARY"

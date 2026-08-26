@@ -1,0 +1,83 @@
+import json
+import re
+import unittest
+from pathlib import Path
+
+
+ROOT = Path(__file__).resolve().parents[1]
+SERVER = ROOT / "deploy" / "server"
+
+
+class ServerDeploymentTests(unittest.TestCase):
+    def test_daily_runner_keeps_source_read_only_and_reports_outside_it(self) -> None:
+        script = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")
+        self.assertIn("dst=/scan/target,readonly", script)
+        self.assertIn("dst=/scan/output", script)
+        self.assertIn("--read-only", script)
+        self.assertIn("--cap-drop ALL", script)
+        self.assertIn("--security-opt no-new-privileges", script)
+        self.assertIn('--user "$JTSR_SCANNER_UID:$JTSR_SCANNER_GID"', script)
+        self.assertNotIn("--patch", script)
+        self.assertNotIn("--create-pr", script)
+
+    def test_daily_runner_uses_fixed_tvm_mode_and_prevents_overlap(self) -> None:
+        script = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")
+        self.assertIn("--mode daily-tvm", script)
+        self.assertIn("--scope vm-execution", script)
+        self.assertIn("flock -n 9", script)
+        self.assertRegex(script, re.compile(r"JTSR_RETENTION_DAYS.*90"))
+
+    def test_timer_is_daily_and_persistent(self) -> None:
+        timer = (SERVER / "java-tron-security-review.timer").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("OnCalendar=*-*-* 18:17:00 UTC", timer)
+        self.assertIn("Persistent=true", timer)
+        self.assertIn("Unit=java-tron-security-review.service", timer)
+
+    def test_openai_key_is_not_baked_into_the_image(self) -> None:
+        dockerfile = (ROOT / "deploy" / "container" / "Dockerfile").read_text(
+            encoding="utf-8"
+        )
+        self.assertNotIn("OPENAI_API_KEY", dockerfile)
+        self.assertNotIn("CODEX_API_KEY", dockerfile)
+
+    def test_container_requires_the_native_codex_package(self) -> None:
+        container = ROOT / "deploy" / "container"
+        dockerfile = (container / "Dockerfile").read_text(encoding="utf-8")
+        package = json.loads((container / "package.json").read_text(encoding="utf-8"))
+        self.assertIn("codex --version", dockerfile)
+        self.assertIn("@openai/codex-linux-arm64", package["optionalDependencies"])
+        self.assertIn("@openai/codex-linux-x64", package["optionalDependencies"])
+
+    def test_chatgpt_auth_is_persistent_and_separate_from_reports(self) -> None:
+        runner = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")
+        auth = (SERVER / "auth-chatgpt.sh").read_text(encoding="utf-8")
+        environment = (SERVER / "jtsr.env.example").read_text(encoding="utf-8")
+        self.assertIn("JTSR_AUTH=chatgpt", environment)
+        self.assertIn(
+            "JTSR_AUTH_ROOT=/var/lib/java-tron-security-review/auth", environment
+        )
+        self.assertIn("dst=/scan/auth", runner)
+        self.assertIn("CODEX_HOME=/scan/auth", runner)
+        self.assertIn("--auth chatgpt", runner)
+        self.assertIn("codex-security login status", runner)
+        self.assertIn("login --device-auth", auth)
+        self.assertIn("CLI_ARGS=(login status)", auth)
+        self.assertIn("CLI_ARGS=(logout)", auth)
+        self.assertIn("auth root must not be inside the output root", runner)
+        self.assertIn("auth root must not be inside the output root", auth)
+
+    def test_chatgpt_auth_service_uses_the_root_only_environment_file(self) -> None:
+        unit = (
+            SERVER / "java-tron-security-review-auth@.service"
+        ).read_text(encoding="utf-8")
+        self.assertIn(
+            "EnvironmentFile=/etc/java-tron-security-review/jtsr.env", unit
+        )
+        self.assertIn("auth-chatgpt %i", unit)
+        self.assertIn("NoNewPrivileges=true", unit)
+
+
+if __name__ == "__main__":
+    unittest.main()

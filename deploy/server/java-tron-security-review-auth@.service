@@ -1,0 +1,19 @@
+[Unit]
+Description=Manage java-tron security-review ChatGPT authentication (%i)
+Documentation=https://learn.chatgpt.com/docs/security/cli/reference
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/etc/java-tron-security-review/jtsr.env
+ExecStart=/usr/local/libexec/java-tron-security-review/auth-chatgpt %i
+UMask=0077
+TimeoutStartSec=15m
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full

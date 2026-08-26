@@ -1,0 +1,15 @@
+{
+  "name": "java-tron-security-review-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "engines": {
+    "node": "24.x"
+  },
+  "dependencies": {
+    "@openai/codex-security": "0.1.16"
+  },
+  "optionalDependencies": {
+    "@openai/codex-linux-arm64": "npm:@openai/codex@0.148.0-alpha.8-linux-arm64",
+    "@openai/codex-linux-x64": "npm:@openai/codex@0.148.0-alpha.8-linux-x64"
+  }
+}

@@ -1,0 +1,13 @@
+[Unit]
+Description=Run the java-tron TVM security review every day
+
+[Timer]
+# 18:17 UTC is 02:17 the following day in Asia/Shanghai.
+OnCalendar=*-*-* 18:17:00 UTC
+Persistent=true
+RandomizedDelaySec=10m
+AccuracySec=1m
+Unit=java-tron-security-review.service
+
+[Install]
+WantedBy=timers.target
