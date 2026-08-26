@@ -177,6 +177,13 @@ TARGET_DIR="$RUN_WORK/target"
 GIT_HOME="$RUN_WORK/git-home"
 install -d -m 0700 "$GIT_HOME"
 
+# git -C was added after the Git version shipped by older systemd 219 hosts.
+# A subshell keeps directory changes scoped while remaining compatible with Git 1.8.3.
+git_in_target() (
+  cd -- "$TARGET_DIR"
+  git "$@"
+)
+
 cleanup() {
   local cleanup_target="${RUN_WORK:-}"
   if [[ -n "$cleanup_target" && -d "$cleanup_target" && "$cleanup_target" == "$JTSR_WORK_ROOT"/run.* ]]; then
@@ -191,10 +198,10 @@ export GIT_TERMINAL_PROMPT=0
 export HOME="$GIT_HOME"
 
 git -c credential.helper= init "$TARGET_DIR"
-git -C "$TARGET_DIR" remote add origin "$JTSR_TARGET_REPOSITORY_URL"
-git -c credential.helper= -C "$TARGET_DIR" fetch --depth=1 --no-tags origin "$JTSR_TARGET_REF"
-git -C "$TARGET_DIR" checkout --detach FETCH_HEAD
-TARGET_SHA="$(git -C "$TARGET_DIR" rev-parse HEAD)"
+git_in_target remote add origin "$JTSR_TARGET_REPOSITORY_URL"
+git_in_target -c credential.helper= fetch --depth=1 --no-tags origin "$JTSR_TARGET_REF"
+git_in_target checkout --detach FETCH_HEAD
+TARGET_SHA="$(git_in_target rev-parse HEAD)"
 [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "target revision is not a full commit SHA"
 chmod -R a-w "$TARGET_DIR"
 

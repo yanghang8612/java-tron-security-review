@@ -27,6 +27,13 @@ class ServerDeploymentTests(unittest.TestCase):
         self.assertIn("flock -n 9", script)
         self.assertRegex(script, re.compile(r"JTSR_RETENTION_DAYS.*90"))
 
+    def test_daily_runner_supports_git_1_8_3(self) -> None:
+        script = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")
+        self.assertIn("git_in_target()", script)
+        self.assertNotRegex(
+            script, re.compile(r"^\s*git\b[^\n]*\s-C(?:\s|$)", re.MULTILINE)
+        )
+
     def test_timer_is_daily_and_persistent(self) -> None:
         timer = (SERVER / "java-tron-security-review.timer").read_text(
             encoding="utf-8"
