@@ -605,6 +605,7 @@ def _run_per_finding_job(
         "source_profile": profile.candidate_source_profile,
         "stage_max_cost": profile.max_cost,
         "per_finding_max_cost": profile.per_finding_max_cost,
+        "per_finding_timeout_minutes": profile.per_finding_timeout_minutes,
         "fallback_model": profile.fallback_model,
         "fallback_effort": profile.fallback_effort,
         "max_fallbacks": profile.max_fallbacks,
@@ -678,6 +679,7 @@ def _run_per_finding_job(
             model_override=model_override,
             max_cost_override=profile.per_finding_max_cost,
             paths_override=candidate_paths or None,
+            timeout_seconds=(profile.per_finding_timeout_minutes or 0) * 60,
             job_id=f"{job.id}/candidate-{index:03d}/primary",
         )
         candidate_record: dict[str, Any] = {

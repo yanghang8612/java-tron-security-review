@@ -44,7 +44,9 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(verifier.fallback_model, "gpt-5.5")
         self.assertEqual(verifier.fallback_effort, "xhigh")
         self.assertEqual(verifier.max_fallbacks, 3)
-        self.assertEqual(verifier.fallback_timeout_minutes, 10)
+        self.assertEqual(verifier.per_finding_max_cost, 30)
+        self.assertEqual(verifier.per_finding_timeout_minutes, 60)
+        self.assertEqual(verifier.fallback_timeout_minutes, 30)
 
     def test_detects_only_explicit_cyber_safety_marker_and_reads_cost(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -185,11 +187,12 @@ class RunnerTests(unittest.TestCase):
             ])
             self.assertFalse(results[1].counts_toward_exit)
             self.assertTrue(results[2].counts_toward_exit)
+            self.assertEqual(results[1].timeout_seconds, 3600)
             fallback_command = results[2].command
             self.assertEqual(
                 fallback_command[fallback_command.index("--effort") + 1], "xhigh"
             )
-            self.assertEqual(results[2].timeout_seconds, 600)
+            self.assertEqual(results[2].timeout_seconds, 1800)
             self.assertNotIn("--max-cost", fallback_command)
             self.assertIn(str(source.relative_to(target)), fallback_command)
             manifest = json.loads(

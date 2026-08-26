@@ -43,6 +43,7 @@ class Profile:
     candidate_source_profile: str | None = None
     max_candidates: int | None = None
     per_finding_max_cost: float | None = None
+    per_finding_timeout_minutes: float | None = None
     fallback_model: str | None = None
     fallback_effort: str | None = None
     max_fallbacks: int | None = None
@@ -150,6 +151,11 @@ def load_config(root: Path | None = None) -> AppConfig:
                 if "per_finding_max_cost" in values
                 else None
             ),
+            per_finding_timeout_minutes=(
+                float(values["per_finding_timeout_minutes"])
+                if "per_finding_timeout_minutes" in values
+                else None
+            ),
             fallback_model=values.get("fallback_model"),
             fallback_effort=values.get("fallback_effort"),
             max_fallbacks=values.get("max_fallbacks"),
@@ -171,6 +177,13 @@ def load_config(root: Path | None = None) -> AppConfig:
             if not profile.per_finding_max_cost or profile.per_finding_max_cost <= 0:
                 raise ValueError(
                     f"profiles.{name}.per_finding_max_cost must be positive"
+                )
+            if (
+                profile.per_finding_timeout_minutes is None
+                or profile.per_finding_timeout_minutes <= 0
+            ):
+                raise ValueError(
+                    f"profiles.{name}.per_finding_timeout_minutes must be positive"
                 )
             if bool(profile.fallback_model) != bool(profile.fallback_effort):
                 raise ValueError(

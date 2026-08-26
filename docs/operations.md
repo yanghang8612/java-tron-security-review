@@ -37,11 +37,11 @@ model. A successful fallback supersedes that one failed attempt. Timeouts, ordin
 coverage, budget exhaustion, malformed output and other failures are not silently reclassified as
 safety blocks. Candidates beyond the configured count remain partial coverage and keep exit `2`.
 
-The default verifier bounds at most eight GPT-5.6 candidate attempts to 12 USD each, keeping the
-96 USD primary worst case below the verifier stage ceiling of 110 USD. Codex Security does not
-currently provide estimated-cost limiting for GPT-5.5. The fallback therefore omits `--max-cost`,
-is limited to three candidates per run, and has a hard ten-minute process-group timeout per
-candidate. Treat fallback usage as time-bounded but not cost-bounded.
+The default verifier bounds at most eight GPT-5.6 candidate attempts to 30 USD and 60 minutes
+each, keeping the 240 USD primary worst case within the verifier stage ceiling of 240 USD. Codex
+Security does not currently provide estimated-cost limiting for GPT-5.5. The fallback therefore
+omits `--max-cost`, is limited to three candidates per run, and has a hard thirty-minute
+process-group timeout per candidate. Treat fallback usage as time-bounded but not cost-bounded.
 
 Advisory workflows use `continue-on-error` so partial results can still be exported. Review
 `coverage.json`; a partial or unknown coverage value is never a clean bill of health.
