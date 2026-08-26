@@ -2,8 +2,9 @@
 Description=Run the java-tron TVM security review every day
 
 [Timer]
+# The host is expected to use UTC. Avoid a timezone suffix so this also loads on systemd 219.
 # 18:17 UTC is 02:17 the following day in Asia/Shanghai.
-OnCalendar=*-*-* 18:17:00 UTC
+OnCalendar=*-*-* 18:17:00
 Persistent=true
 RandomizedDelaySec=10m
 AccuracySec=1m

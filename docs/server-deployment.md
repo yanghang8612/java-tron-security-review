@@ -99,9 +99,11 @@ Exit `0` means both passes completed, exit `2` means partial/bounded coverage, a
 status means an operational failure. A partial run is intentionally a failed systemd service so it
 cannot be mistaken for a clean result. Available evidence remains in the run directory.
 
-The timer uses `18:17 UTC`, equivalent to `02:17 Asia/Shanghai` on the following calendar day, and
-adds up to ten minutes of randomized delay. `Persistent=true` starts a missed run after the host
-returns. To use another time, edit the timer, run `systemctl daemon-reload`, and restart the timer.
+The timer expects the host timezone to be UTC and uses `18:17` host time, equivalent to `02:17
+Asia/Shanghai` on the following calendar day. Omitting a timezone suffix keeps the unit compatible
+with systemd 219. It adds up to ten minutes of randomized delay. `Persistent=true` starts a missed
+run after the host returns. To use another time or a non-UTC host, edit the timer, run `systemctl
+daemon-reload`, and restart the timer.
 `deploy/server/cron.example` is a fallback for operators who prefer cron.
 
 ## Results, retention, and logs

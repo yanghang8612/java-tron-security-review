@@ -31,7 +31,8 @@ class ServerDeploymentTests(unittest.TestCase):
         timer = (SERVER / "java-tron-security-review.timer").read_text(
             encoding="utf-8"
         )
-        self.assertIn("OnCalendar=*-*-* 18:17:00 UTC", timer)
+        self.assertIn("OnCalendar=*-*-* 18:17:00", timer)
+        self.assertNotIn("18:17:00 UTC", timer)
         self.assertIn("Persistent=true", timer)
         self.assertIn("Unit=java-tron-security-review.service", timer)
 
