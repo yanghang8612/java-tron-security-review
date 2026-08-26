@@ -81,6 +81,7 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(environment["CODEX_HOME"], "/scan/auth")
         self.assertNotIn("OPENAI_API_KEY", environment)
         self.assertNotIn("CODEX_API_KEY", environment)
+        self.assertNotIn("CODEX_SECURITY_STATE_DIR", environment)
 
     def test_pr_command_is_read_only_and_diff_scoped(self) -> None:
         plan = build_plan(

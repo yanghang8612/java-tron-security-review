@@ -150,6 +150,9 @@ account credentials, not merely cache: use encrypted host storage, do not copy i
 archives, and trust host root and Docker-daemon administrators accordingly. To revoke the local
 sign-in:
 
+The private Codex Security workbench state also remains under this auth directory so login,
+status checks, and scheduled scans all use the same managed Codex home.
+
 ```bash
 sudo systemctl disable --now java-tron-security-review.timer
 sudo systemctl start java-tron-security-review-auth@logout.service

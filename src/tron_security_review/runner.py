@@ -99,7 +99,14 @@ def _safe_environment(
     }
     if "amazon-bedrock" not in providers:
         environment["AWS_EC2_METADATA_DISABLED"] = "true"
-    environment["CODEX_SECURITY_STATE_DIR"] = str(state_dir.resolve())
+    # Codex Security gives its state directory precedence over CODEX_HOME.  In
+    # ChatGPT mode, keep both login and scan jobs on the managed Codex home
+    # mounted below CODEX_HOME so the scanner can see the stored credentials.
+    uses_chatgpt_home = auth == "chatgpt" or (
+        auth == "auto" and "CODEX_HOME" in environment
+    )
+    if not uses_chatgpt_home:
+        environment["CODEX_SECURITY_STATE_DIR"] = str(state_dir.resolve())
     return environment
 
 
