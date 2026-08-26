@@ -6,7 +6,7 @@ effort = "high"
 scan_mode = "standard"
 modes = ["pr", "daily-tvm"]
 minimum_risk = "low"
-max_cost = 3.0
+max_cost = 8.0
 prompt = "prompts/scan.md"
 
 [profiles.primary]
@@ -28,7 +28,7 @@ effort = "max"
 scan_mode = "standard"
 modes = ["pr", "daily-tvm", "nightly"]
 minimum_risk = "high"
-max_cost = 6.0
+max_cost = 12.0
 prompt = "prompts/skeptic.md"
 
 [profiles.deep]
