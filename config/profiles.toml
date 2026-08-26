@@ -28,7 +28,7 @@ effort = "max"
 scan_mode = "standard"
 modes = ["pr", "daily-tvm", "nightly"]
 minimum_risk = "high"
-max_cost = 200.0
+max_cost = 110.0
 prompt = "prompts/skeptic.md"
 
 [profiles.deep]

@@ -37,7 +37,7 @@ Every run scans these paths even when the branch has not changed:
 - `common/src/main/java/org/tron/core/vm`
 
 The default profile pair uses `gpt-5.6-terra` for evidence-oriented triage and `gpt-5.6-sol` with
-the skeptical verifier prompt. The CLI applies configured estimated-cost limits of 8 + 200 USD per
+the skeptical verifier prompt. The CLI applies configured estimated-cost limits of 8 + 110 USD per
 daily run. They bound the scan even when ChatGPT authentication is selected; they do not describe
 the ChatGPT subscription bill or guarantee complete coverage.
 
