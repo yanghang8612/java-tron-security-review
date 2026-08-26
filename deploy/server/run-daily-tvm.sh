@@ -203,7 +203,10 @@ git_in_target -c credential.helper= fetch --depth=1 --no-tags origin "$JTSR_TARG
 git_in_target checkout --detach FETCH_HEAD
 TARGET_SHA="$(git_in_target rev-parse HEAD)"
 [[ "$TARGET_SHA" =~ ^[0-9a-f]{40}$ ]] || fail "target revision is not a full commit SHA"
-chmod -R a-w "$TARGET_DIR"
+# The checkout is created under umask 077, but the container deliberately runs as uid 10001.
+# Make only this bind-mounted tree readable/traversable while keeping it immutable. The parent
+# work directory remains root-owned mode 0700, so other host users cannot traverse into it.
+chmod -R a+rX,a-w "$TARGET_DIR"
 
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-daily-tvm-${TARGET_SHA:0:12}"
 RUN_DIR="$JTSR_OUTPUT_ROOT/$RUN_ID"

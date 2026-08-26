@@ -17,6 +17,7 @@ class ServerDeploymentTests(unittest.TestCase):
         self.assertIn("--cap-drop ALL", script)
         self.assertIn("--security-opt no-new-privileges", script)
         self.assertIn('--user "$JTSR_SCANNER_UID:$JTSR_SCANNER_GID"', script)
+        self.assertIn('chmod -R a+rX,a-w "$TARGET_DIR"', script)
         self.assertNotIn("--patch", script)
         self.assertNotIn("--create-pr", script)
 
