@@ -39,6 +39,14 @@ class Profile:
     stop_after_no_new: int | None = None
     max_discovery_runs: int | None = None
     max_time_hours: float | None = None
+    per_finding: bool = False
+    candidate_source_profile: str | None = None
+    max_candidates: int | None = None
+    per_finding_max_cost: float | None = None
+    fallback_model: str | None = None
+    fallback_effort: str | None = None
+    max_fallbacks: int | None = None
+    fallback_timeout_minutes: float | None = None
 
 
 @dataclass(frozen=True)
@@ -111,32 +119,106 @@ def load_config(root: Path | None = None) -> AppConfig:
         scan_mode = values.get("scan_mode", "standard")
         if scan_mode not in {"standard", "deep"}:
             raise ValueError(f"profiles.{name}.scan_mode is invalid: {scan_mode!r}")
-        profiles.append(
-            Profile(
-                name=name,
-                description=values.get("description", ""),
-                provider=values["provider"],
-                model=values["model"],
-                effort=values["effort"],
-                scan_mode=scan_mode,
-                modes=tuple(values.get("modes", [])),
-                minimum_risk=_validate_risk(
-                    values.get("minimum_risk", "low"),
-                    f"profiles.{name}.minimum_risk",
-                ),
-                max_cost=float(values["max_cost"]) if "max_cost" in values else None,
-                prompt=_resolve(root, values.get("prompt", raw_system["scan_prompt"])),
-                workers=values.get("workers"),
-                subagents=values.get("subagents"),
-                stop_after_no_new=values.get("stop_after_no_new"),
-                max_discovery_runs=values.get("max_discovery_runs"),
-                max_time_hours=(
-                    float(values["max_time_hours"])
-                    if "max_time_hours" in values
-                    else None
-                ),
-            )
+        profile = Profile(
+            name=name,
+            description=values.get("description", ""),
+            provider=values["provider"],
+            model=values["model"],
+            effort=values["effort"],
+            scan_mode=scan_mode,
+            modes=tuple(values.get("modes", [])),
+            minimum_risk=_validate_risk(
+                values.get("minimum_risk", "low"),
+                f"profiles.{name}.minimum_risk",
+            ),
+            max_cost=float(values["max_cost"]) if "max_cost" in values else None,
+            prompt=_resolve(root, values.get("prompt", raw_system["scan_prompt"])),
+            workers=values.get("workers"),
+            subagents=values.get("subagents"),
+            stop_after_no_new=values.get("stop_after_no_new"),
+            max_discovery_runs=values.get("max_discovery_runs"),
+            max_time_hours=(
+                float(values["max_time_hours"])
+                if "max_time_hours" in values
+                else None
+            ),
+            per_finding=bool(values.get("per_finding", False)),
+            candidate_source_profile=values.get("candidate_source_profile"),
+            max_candidates=values.get("max_candidates"),
+            per_finding_max_cost=(
+                float(values["per_finding_max_cost"])
+                if "per_finding_max_cost" in values
+                else None
+            ),
+            fallback_model=values.get("fallback_model"),
+            fallback_effort=values.get("fallback_effort"),
+            max_fallbacks=values.get("max_fallbacks"),
+            fallback_timeout_minutes=(
+                float(values["fallback_timeout_minutes"])
+                if "fallback_timeout_minutes" in values
+                else None
+            ),
         )
+        if profile.per_finding:
+            if not profile.candidate_source_profile:
+                raise ValueError(
+                    f"profiles.{name}.candidate_source_profile is required for per-finding review"
+                )
+            if not profile.max_candidates or profile.max_candidates < 1:
+                raise ValueError(
+                    f"profiles.{name}.max_candidates must be a positive integer"
+                )
+            if not profile.per_finding_max_cost or profile.per_finding_max_cost <= 0:
+                raise ValueError(
+                    f"profiles.{name}.per_finding_max_cost must be positive"
+                )
+            if bool(profile.fallback_model) != bool(profile.fallback_effort):
+                raise ValueError(
+                    f"profiles.{name}.fallback_model and fallback_effort must be configured together"
+                )
+            if profile.fallback_model == "gpt-5.5" and profile.fallback_effort not in {
+                "none",
+                "low",
+                "medium",
+                "high",
+                "xhigh",
+            }:
+                raise ValueError(
+                    f"profiles.{name}.fallback_effort is unsupported by gpt-5.5"
+                )
+            if profile.fallback_model and (
+                not profile.max_fallbacks or profile.max_fallbacks < 1
+            ):
+                raise ValueError(
+                    f"profiles.{name}.max_fallbacks must be positive when fallback is enabled"
+                )
+            if profile.fallback_model and (
+                profile.fallback_timeout_minutes is None
+                or profile.fallback_timeout_minutes <= 0
+            ):
+                raise ValueError(
+                    f"profiles.{name}.fallback_timeout_minutes must be positive when fallback is enabled"
+                )
+            primary_worst_case = (
+                profile.max_candidates * profile.per_finding_max_cost
+            )
+            if profile.max_cost is None or primary_worst_case > profile.max_cost:
+                raise ValueError(
+                    f"profiles.{name} per-finding primary cost {primary_worst_case:g} "
+                    f"exceeds max_cost {profile.max_cost!r}"
+                )
+        profiles.append(profile)
+
+    profile_names = {profile.name for profile in profiles}
+    for profile in profiles:
+        if (
+            profile.per_finding
+            and profile.candidate_source_profile not in profile_names
+        ):
+            raise ValueError(
+                f"profiles.{profile.name}.candidate_source_profile "
+                f"{profile.candidate_source_profile!r} does not exist"
+            )
 
     scopes: list[Scope] = []
     seen_scope_ids: set[str] = set()

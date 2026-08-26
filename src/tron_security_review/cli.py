@@ -145,15 +145,18 @@ def cmd_scan(args: argparse.Namespace) -> int:
     )
     summary = read_scan_summary(run_dir)
     print(json.dumps({"run_dir": str(run_dir), **summary}, indent=2))
-    codes = [result.returncode for result in results]
+    effective_results = [result for result in results if result.counts_toward_exit]
+    codes = [result.returncode for result in effective_results]
     export_codes = [
         result.export_returncode
-        for result in results
+        for result in effective_results
         if result.export_returncode is not None
     ]
     if any(code not in {0, 2} for code in codes + export_codes):
         return 1
-    if any(code == 2 for code in codes + export_codes):
+    if summary.get("partial_coverage") or any(
+        code == 2 for code in codes + export_codes
+    ):
         return 2
     return 0
 

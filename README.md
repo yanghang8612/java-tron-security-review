@@ -9,8 +9,10 @@ SARIF, and keeps scan state outside the target worktree. It is advisory and read
 
 ## What is implemented
 
-- PR diff planning with a fast triage model and a second falsification pass for High/Critical
-  paths.
+- PR diff planning with a fast triage model and isolated, per-finding falsification for
+  High/Critical candidates.
+- A GPT-5.5/xhigh fallback only when a GPT-5.6 verifier attempt returns the explicit Codex
+  Security cyber-safety block; unrelated partial or operational failures are not retried.
 - Fixed-path daily TVM scans, nightly incremental scans and a seven-scope weekly deep-scan rotation.
 - Release/manual full-repository scan modes.
 - Mandatory release/runtime reachability policy for every finding.
@@ -116,7 +118,12 @@ var/scans/<run-id>/
 │       ├── coverage.json
 │       └── report.md
 └── verifier/
-    └── ...
+    ├── verification-manifest.json
+    └── candidates/
+        └── 001-<fingerprint>/
+            ├── candidate-context.md
+            ├── gpt-5-6-sol/
+            └── gpt-5-5/          # present only after an explicit safety-block fallback
 ```
 
 These files may contain source excerpts, secrets and unpatched vulnerability details. `var/` is
@@ -161,7 +168,8 @@ system and no cloud resources are created by this repository.
 ## Configuration
 
 - `config/system.toml`: CLI pin, target/output defaults and knowledge bases.
-- `config/profiles.toml`: models, effort, modes, cost and deep-scan limits.
+- `config/profiles.toml`: models, effort, modes, per-finding/fallback policy, cost and deep-scan
+  limits.
 - `config/scopes.toml`: java-tron path-to-risk routing and weekly rotation.
 - `knowledge/threat-model.md`: mandatory security and reachability policy.
 - `prompts/`: normal investigation, independent falsification and post-scan evidence gate.

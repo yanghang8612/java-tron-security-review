@@ -33,6 +33,39 @@ class ArtifactTests(unittest.TestCase):
             self.assertTrue(group["corroborated_by_multiple_profiles"])
             self.assertEqual(group["profiles"], ["triage", "verifier"])
 
+    def test_discovers_nested_per_finding_results(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            run_dir = Path(directory)
+            results = (
+                run_dir
+                / "verifier-vm-execution"
+                / "candidates"
+                / "001-example"
+                / "gpt-5-5"
+                / "results"
+            )
+            results.mkdir(parents=True)
+            (results / "findings.json").write_text(
+                json.dumps(
+                    {
+                        "findings": [
+                            {
+                                "id": "finding-1",
+                                "title": "Example",
+                                "severity": "high",
+                            }
+                        ]
+                    }
+                ),
+                encoding="utf-8",
+            )
+            aggregate = aggregate_run(run_dir)
+            self.assertEqual(aggregate["finding_group_count"], 1)
+            self.assertEqual(
+                aggregate["finding_groups"][0]["profiles"],
+                ["verifier-vm-execution"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

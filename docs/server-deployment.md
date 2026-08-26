@@ -36,10 +36,16 @@ Every run scans these paths even when the branch has not changed:
 - `actuator/src/main/java/org/tron/core/actuator/VMActuator.java`
 - `common/src/main/java/org/tron/core/vm`
 
-The default profile pair uses `gpt-5.6-terra` for evidence-oriented triage and `gpt-5.6-sol` with
-the skeptical verifier prompt. The CLI applies configured estimated-cost limits of 8 + 110 USD per
-daily run. They bound the scan even when ChatGPT authentication is selected; they do not describe
-the ChatGPT subscription bill or guarantee complete coverage.
+The default profile pair uses `gpt-5.6-terra` for evidence-oriented triage, then gives each triage
+candidate its own `gpt-5.6-sol` skeptical-verifier invocation. One candidate hitting the explicit
+Codex Security cyber-safety block is retried with `gpt-5.5` at `xhigh`; other failure classes do not
+trigger fallback. At most eight candidates are selected in severity order. Each GPT-5.6 primary
+attempt is bounded at 12 USD, so its 96 USD worst case remains within the 110 USD verifier stage
+ceiling, in addition to the 8 USD triage ceiling. Codex Security does not currently support
+estimated-cost limiting for GPT-5.5, so at most three fallback candidates are allowed and each is
+stopped after ten minutes. These are CLI estimated-cost and wall-clock controls even when ChatGPT
+authentication is selected; they do not describe the ChatGPT subscription bill or guarantee
+complete coverage.
 
 ## Host prerequisites
 
@@ -119,8 +125,10 @@ The host wrapper writes results beneath:
     ├── target-revision.txt
     ├── run-manifest.json
     ├── aggregate.json
-    ├── triage/
-    └── verifier/
+    ├── triage-vm-execution/
+    └── verifier-vm-execution/
+        ├── verification-manifest.json
+        └── candidates/<candidate>/<model-attempt>/
 ```
 
 Directories matching the daily-run naming scheme are deleted after 90 days by default. The prune

@@ -4,7 +4,7 @@ from collections import defaultdict
 from hashlib import sha256
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterable
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -15,7 +15,7 @@ def write_json(path: Path, value: Any) -> None:
     )
 
 
-def _finding_list(document: Any) -> list[dict[str, Any]]:
+def finding_list(document: Any) -> list[dict[str, Any]]:
     if isinstance(document, list):
         return [item for item in document if isinstance(item, dict)]
     if not isinstance(document, dict):
@@ -25,7 +25,7 @@ def _finding_list(document: Any) -> list[dict[str, Any]]:
         if isinstance(value, list):
             return [item for item in value if isinstance(item, dict)]
         if isinstance(value, dict):
-            nested = _finding_list(value)
+            nested = finding_list(value)
             if nested:
                 return nested
     return []
@@ -39,7 +39,7 @@ def _first(item: dict[str, Any], *keys: str) -> Any:
     return None
 
 
-def _fingerprint(item: dict[str, Any]) -> str:
+def finding_fingerprint(item: dict[str, Any]) -> str:
     native = _first(item, "fingerprint", "finding_id", "findingId", "id")
     if native:
         return f"native:{native}"
@@ -53,18 +53,29 @@ def _fingerprint(item: dict[str, Any]) -> str:
     return "derived:" + sha256(encoded).hexdigest()
 
 
-def aggregate_run(run_dir: Path) -> dict[str, Any]:
+def read_findings(path: Path) -> list[dict[str, Any]]:
+    document = json.loads(path.read_text(encoding="utf-8"))
+    return finding_list(document)
+
+
+def aggregate_run(
+    run_dir: Path, excluded_scan_dirs: Iterable[Path] = ()
+) -> dict[str, Any]:
     grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
     unreadable: list[str] = []
-    for findings_path in sorted(run_dir.glob("*/results/findings.json")):
-        profile = findings_path.parents[1].name
+    excluded = {path.resolve() for path in excluded_scan_dirs}
+    for findings_path in sorted(run_dir.glob("**/results/findings.json")):
+        if findings_path.parent.resolve() in excluded:
+            continue
+        relative = findings_path.relative_to(run_dir)
+        profile = relative.parts[0]
         try:
             document = json.loads(findings_path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             unreadable.append(str(findings_path))
             continue
-        for item in _finding_list(document):
-            grouped[_fingerprint(item)].append(
+        for item in finding_list(document):
+            grouped[finding_fingerprint(item)].append(
                 {
                     "profile": profile,
                     "native_id": _first(

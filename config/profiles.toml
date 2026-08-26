@@ -30,6 +30,14 @@ modes = ["pr", "daily-tvm", "nightly"]
 minimum_risk = "high"
 max_cost = 110.0
 prompt = "prompts/skeptic.md"
+per_finding = true
+candidate_source_profile = "triage"
+max_candidates = 8
+per_finding_max_cost = 12.0
+fallback_model = "gpt-5.5"
+fallback_effort = "xhigh"
+max_fallbacks = 3
+fallback_timeout_minutes = 10.0
 
 [profiles.deep]
 description = "Rotating deep review of one critical subsystem"

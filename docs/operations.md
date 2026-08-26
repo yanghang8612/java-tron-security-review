@@ -31,6 +31,18 @@ The wrapper preserves Codex Security exit semantics:
 - `2`: at least one scan completed only partially or reached a bounded limit.
 - `1`: an operational/configuration error or an unexpected CLI/export failure.
 
+High/Critical verifier work is isolated per triage candidate. A candidate that returns exit `2`
+with the explicit Codex Security cyber-safety marker is retried once with the configured fallback
+model. A successful fallback supersedes that one failed attempt. Timeouts, ordinary bounded
+coverage, budget exhaustion, malformed output and other failures are not silently reclassified as
+safety blocks. Candidates beyond the configured count remain partial coverage and keep exit `2`.
+
+The default verifier bounds at most eight GPT-5.6 candidate attempts to 12 USD each, keeping the
+96 USD primary worst case below the verifier stage ceiling of 110 USD. Codex Security does not
+currently provide estimated-cost limiting for GPT-5.5. The fallback therefore omits `--max-cost`,
+is limited to three candidates per run, and has a hard ten-minute process-group timeout per
+candidate. Treat fallback usage as time-bounded but not cost-bounded.
+
 Advisory workflows use `continue-on-error` so partial results can still be exported. Review
 `coverage.json`; a partial or unknown coverage value is never a clean bill of health.
 
