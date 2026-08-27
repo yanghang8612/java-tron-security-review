@@ -8,6 +8,7 @@ advisory = true
 
 knowledge_bases = [
   "knowledge/threat-model.md",
+  "knowledge/tvm-review-playbook.md",
 ]
 
 optional_knowledge_bases = [

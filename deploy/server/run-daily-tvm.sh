@@ -246,7 +246,6 @@ SCAN_ARGS=(
   --mode daily-tvm
   --target /scan/target
   --head "$TARGET_SHA"
-  --scope vm-execution
   --output-root /scan/output
   --run-id "$RUN_ID"
   --cli-bin /usr/local/bin/codex-security

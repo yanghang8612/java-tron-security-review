@@ -414,10 +414,6 @@ resource "aws_codebuild_project" "daily_tvm" {
       value = "daily-tvm"
     }
     environment_variable {
-      name  = "JTSR_SCOPE"
-      value = "vm-execution"
-    }
-    environment_variable {
       name  = "SCAN_PROVIDER"
       value = var.scan_provider
     }

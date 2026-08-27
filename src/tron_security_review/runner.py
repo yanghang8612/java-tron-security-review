@@ -153,12 +153,20 @@ def _render_job_prompt(
     scope_context = (
         f"{job.scope.id}: {job.scope.description}" if job.scope else "diff/full target"
     )
+    focus_context = (
+        "\n".join(f"- {item}" for item in job.scope.focus)
+        if job.scope and job.scope.focus
+        else "- follow the profile prompt and matched risk routes"
+    )
     rendered = (
         base.rstrip()
         + "\n\n## Orchestrator-provided run context\n\n"
         + f"Run mode: `{plan.run_mode}`\n\n"
         + f"Highest routed risk: `{plan.highest_risk}`\n\n"
         + f"Selected scope: {scope_context}\n\n"
+        + "Required analysis focus:\n"
+        + focus_context
+        + "\n\n"
         + "Matched risk routes:\n"
         + route_context
         + "\n\nChanged files:\n"
@@ -736,6 +744,14 @@ def _run_per_finding_job(
     return attempts, skipped_count > 0
 
 
+def _has_partial_results(results: Iterable[InvocationResult]) -> bool:
+    return any(
+        result.counts_toward_exit
+        and (result.returncode == 2 or result.export_returncode == 2)
+        for result in results
+    )
+
+
 def run_plan(
     config: AppConfig,
     plan: ScanPlan,
@@ -838,6 +854,7 @@ def run_plan(
     )
     aggregate = aggregate_run(run_dir, excluded_scan_dirs=excluded_scan_dirs)
     write_json(run_dir / "aggregate.json", aggregate)
+    partial_coverage = partial_coverage or _has_partial_results(results)
     final_manifest = dict(initial_manifest)
     final_manifest["completed_at"] = datetime.now(timezone.utc).isoformat()
     final_manifest["partial_coverage"] = partial_coverage

@@ -19,7 +19,15 @@ For each finding, determine where evidence permits:
 - one of `production-reachable`, `not production-reachable`, or `reachability unverified`.
 
 If code never shipped or never became active, it is not an effective production vulnerability.
-When release or activation evidence is incomplete, do not assume production impact.
+When release or activation evidence is incomplete, do not assume production impact and do not put
+the hypothesis in the formal finding list. Preserve it as deferred coverage with the exact evidence
+needed to resolve it.
+
+The presence of a pre-activation branch is expected in consensus software that must replay old
+blocks. Tests that explicitly set a gate to zero and defaults used before chain state is loaded do
+not establish current exploitability. A current-network finding must trace the effective value from
+proposal/fork state through configuration loading into the affected execution and show why an
+attacker can select that branch for a new transaction or block.
 
 ## 2. System and assets
 
@@ -125,7 +133,8 @@ Severity applies only after reachability is established.
 
 ## 6. Required finding record
 
-Every reportable finding must include:
+Every reportable finding must be `production-reachable` for its stated network, node role and
+execution context, and must include:
 
 - affected component and symbol, attacker-controlled entry point and trigger;
 - root cause, source-to-impact path and violated invariant;
@@ -137,6 +146,9 @@ Every reportable finding must include:
 - source-level severity and deployment-adjusted severity;
 - confidence and coverage limitations; and
 - production reachability status.
+
+`not production-reachable` and `reachability unverified` items belong in coverage/deferred work,
+not in `findings.json`.
 
 High and Critical candidates remain unconfirmed until independently reviewed by a human. Automated
 systems must not publish vulnerability details to public issues or pull-request comments.

@@ -56,8 +56,10 @@ class Scope:
     description: str
     risk: str
     rotation: bool
+    daily_tvm: bool
     paths: tuple[str, ...]
     patterns: tuple[str, ...]
+    focus: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -246,10 +248,21 @@ def load_config(root: Path | None = None) -> AppConfig:
                 description=values.get("description", ""),
                 risk=_validate_risk(values["risk"], f"scopes.{scope_id}.risk"),
                 rotation=bool(values.get("rotation", False)),
+                daily_tvm=bool(values.get("daily_tvm", False)),
                 paths=tuple(values.get("paths", [])),
                 patterns=tuple(values.get("patterns", [])),
+                focus=tuple(values.get("focus", [])),
             )
         )
+
+    daily_tvm_scopes = [scope for scope in scopes if scope.daily_tvm]
+    if not daily_tvm_scopes:
+        raise ValueError("at least one daily TVM scope must be configured")
+    for scope in daily_tvm_scopes:
+        if not scope.paths:
+            raise ValueError(f"daily TVM scope {scope.id!r} has no paths")
+        if not scope.focus:
+            raise ValueError(f"daily TVM scope {scope.id!r} has no analysis focus")
 
     return AppConfig(
         root=root,

@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from types import SimpleNamespace
 import tempfile
 import unittest
 import unittest.mock
@@ -10,6 +11,7 @@ from tron_security_review.runner import (
     _candidate_paths,
     _cyber_safety_blocked,
     _estimated_cost,
+    _has_partial_results,
     _run_command,
     _safe_environment,
     build_scan_command,
@@ -76,6 +78,25 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(returncode, 2)
             self.assertIn("orchestrator timeout", stderr.read_text(encoding="utf-8"))
 
+    def test_effective_exit_two_marks_partial_but_superseded_attempt_does_not(self) -> None:
+        superseded = SimpleNamespace(
+            counts_toward_exit=False,
+            returncode=2,
+            export_returncode=None,
+        )
+        successful_fallback = SimpleNamespace(
+            counts_toward_exit=True,
+            returncode=0,
+            export_returncode=None,
+        )
+        failed_fallback = SimpleNamespace(
+            counts_toward_exit=True,
+            returncode=2,
+            export_returncode=None,
+        )
+        self.assertFalse(_has_partial_results((superseded, successful_fallback)))
+        self.assertTrue(_has_partial_results((superseded, failed_fallback)))
+
     def test_candidate_paths_are_scoped_and_cannot_escape_target(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory)
@@ -102,14 +123,18 @@ class RunnerTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             target = root / "target"
-            source = target / "actuator/src/main/java/org/tron/core/vm/Example.java"
+            source = target / "actuator/src/main/java/org/tron/core/vm/VM.java"
             source.parent.mkdir(parents=True)
             source.write_text("class Example {}\n", encoding="utf-8")
             output_root = root / "output"
             cli_bin = root / "codex-security"
             cli_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
             cli_bin.chmod(0o755)
-            plan = build_plan(self.config, "daily-tvm")
+            plan = build_plan(
+                self.config,
+                "daily-tvm",
+                scope_id="tvm-opcode-dispatch",
+            )
 
             def fake_run(
                 command,
@@ -139,7 +164,7 @@ class RunnerTests(unittest.TestCase):
                                         "title": "Candidate",
                                         "severity": "high",
                                         "location": {
-                                            "path": "actuator/src/main/java/org/tron/core/vm/Example.java"
+                                            "path": "actuator/src/main/java/org/tron/core/vm/VM.java"
                                         },
                                     }
                                 ]
@@ -310,7 +335,7 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("--diff", command)
 
     def test_daily_tvm_standard_command_uses_paths(self) -> None:
-        plan = build_plan(self.config, "daily-tvm")
+        plan = build_plan(self.config, "daily-tvm", day_of_year=1)
         command = build_scan_command(
             config=self.config,
             job=plan.jobs[0],
@@ -327,7 +352,24 @@ class RunnerTests(unittest.TestCase):
         )
         self.assertEqual(command[command.index("--mode") + 1], "standard")
         self.assertIn("--path", command)
+        self.assertIn(
+            "actuator/src/main/java/org/tron/core/actuator/VMActuator.java",
+            command,
+        )
         self.assertNotIn("--diff", command)
+
+    def test_daily_tvm_prompt_contains_cross_module_focus(self) -> None:
+        plan = build_plan(self.config, "daily-tvm", day_of_year=4)
+        job = plan.jobs[0]
+        with tempfile.TemporaryDirectory() as directory:
+            prompt_path = Path(directory) / "scan-context.md"
+            from tron_security_review.runner import _render_job_prompt
+
+            _render_job_prompt(job, plan, prompt_path)
+            rendered = prompt_path.read_text(encoding="utf-8")
+        self.assertIn("Selected scope: tvm-state-rollback", rendered)
+        self.assertIn("Required analysis focus", rendered)
+        self.assertIn("Trace account, contract, code, storage", rendered)
 
     def test_chatgpt_scan_command_selects_stored_auth(self) -> None:
         plan = build_plan(self.config, "daily-tvm")

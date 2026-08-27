@@ -14,6 +14,218 @@ patterns = [
   "common/src/main/java/org/tron/core/vm/**",
 ]
 
+# Daily TVM reviews deliberately select one narrow execution facet.  Each facet
+# includes its cross-module callers and sinks so --path scoping does not reduce
+# the review to isolated files.
+
+[[scopes]]
+id = "tvm-entry-context"
+description = "Transaction, constant-call and replay entry paths into TVM execution context"
+risk = "critical"
+rotation = false
+daily_tvm = true
+paths = [
+  "framework/src/main/java/org/tron/common/runtime/RuntimeImpl.java",
+  "chainbase/src/main/java/org/tron/core/db/TransactionTrace.java",
+  "actuator/src/main/java/org/tron/core/actuator/VMActuator.java",
+  "actuator/src/main/java/org/tron/core/vm/config/ConfigLoader.java",
+  "common/src/main/java/org/tron/core/vm/config/VMConfig.java",
+]
+patterns = [
+  "framework/src/main/java/org/tron/common/runtime/RuntimeImpl.java",
+  "chainbase/src/main/java/org/tron/core/db/TransactionTrace.java",
+  "actuator/src/main/java/org/tron/core/actuator/VMActuator.java",
+  "actuator/src/main/java/org/tron/core/vm/config/ConfigLoader.java",
+  "common/src/main/java/org/tron/core/vm/config/VMConfig.java",
+]
+focus = [
+  "Trace normal transaction, constant-call, estimation and historical replay entry points through context construction and result finalization.",
+  "Track caller, origin, value, block, repository, Energy and proposal snapshot data across module boundaries.",
+  "Compare success, REVERT, timeout and exception paths through receipt/status persistence and rollback.",
+]
+
+[[scopes]]
+id = "tvm-opcode-dispatch"
+description = "Interpreter dispatch, opcode registration, fork mutation and Energy selection"
+risk = "critical"
+rotation = false
+daily_tvm = true
+paths = [
+  "actuator/src/main/java/org/tron/core/vm/VM.java",
+  "actuator/src/main/java/org/tron/core/vm/OperationRegistry.java",
+  "actuator/src/main/java/org/tron/core/vm/EnergyCost.java",
+  "actuator/src/main/java/org/tron/core/vm/program/Program.java",
+  "common/src/main/java/org/tron/core/vm/config/VMConfig.java",
+]
+patterns = [
+  "actuator/src/main/java/org/tron/core/vm/VM.java",
+  "actuator/src/main/java/org/tron/core/vm/OperationRegistry.java",
+  "actuator/src/main/java/org/tron/core/vm/EnergyCost.java",
+  "actuator/src/main/java/org/tron/core/vm/program/Program.java",
+]
+focus = [
+  "Trace bytecode fetch, opcode lookup, validation, Energy charge, execution and program-counter mutation as one flow.",
+  "Check table mutation and snapshot isolation across normal, constant and concurrent executions.",
+  "Compare every fork-gated opcode and cost branch against the effective activation state before treating legacy behavior as reachable.",
+]
+
+[[scopes]]
+id = "tvm-call-create"
+description = "Nested CALL/CREATE execution, invocation context and internal transactions"
+risk = "critical"
+rotation = false
+daily_tvm = true
+paths = [
+  "actuator/src/main/java/org/tron/core/vm/program/Program.java",
+  "actuator/src/main/java/org/tron/core/vm/MessageCall.java",
+  "actuator/src/main/java/org/tron/core/vm/program/invoke",
+  "chainbase/src/main/java/org/tron/common/runtime/InternalTransaction.java",
+  "chainbase/src/main/java/org/tron/common/runtime/ProgramResult.java",
+  "actuator/src/main/java/org/tron/core/vm/repository/Repository.java",
+]
+patterns = [
+  "actuator/src/main/java/org/tron/core/vm/program/Program.java",
+  "actuator/src/main/java/org/tron/core/vm/MessageCall.java",
+  "actuator/src/main/java/org/tron/core/vm/program/invoke/**",
+  "chainbase/src/main/java/org/tron/common/runtime/InternalTransaction.java",
+  "chainbase/src/main/java/org/tron/common/runtime/ProgramResult.java",
+]
+focus = [
+  "Trace CALL, CALLCODE, DELEGATECALL, STATICCALL, CREATE and CREATE2 from operand decoding through child execution and merge/discard.",
+  "Track caller, origin, address, call value, token value, static state, depth and Energy across every child boundary.",
+  "Prove failed child execution cannot leak state, logs, deletion markers, refunds or successful internal-transaction status.",
+]
+
+[[scopes]]
+id = "tvm-state-rollback"
+description = "Child repositories, storage caches and atomic commit/discard behavior"
+risk = "critical"
+rotation = false
+daily_tvm = true
+paths = [
+  "actuator/src/main/java/org/tron/core/vm/program/Program.java",
+  "actuator/src/main/java/org/tron/core/vm/program/ContractState.java",
+  "actuator/src/main/java/org/tron/core/vm/program/Storage.java",
+  "actuator/src/main/java/org/tron/core/vm/repository",
+  "chainbase/src/main/java/org/tron/common/runtime/ProgramResult.java",
+  "framework/src/main/java/org/tron/common/runtime/RuntimeImpl.java",
+]
+patterns = [
+  "actuator/src/main/java/org/tron/core/vm/program/ContractState.java",
+  "actuator/src/main/java/org/tron/core/vm/program/Storage.java",
+  "actuator/src/main/java/org/tron/core/vm/repository/**",
+  "chainbase/src/main/java/org/tron/common/runtime/ProgramResult.java",
+]
+focus = [
+  "Trace account, contract, code, storage, token, vote and deletion mutations from child caches to root commit.",
+  "Compare success, REVERT, exception, timeout and nested failure paths, including logs, refunds and internal transactions.",
+  "Treat legacy repository branches as current findings only after proving the target network can select them for new execution.",
+]
+
+[[scopes]]
+id = "tvm-precompile-native"
+description = "Precompile decoding, cryptographic work bounds and native state interaction"
+risk = "critical"
+rotation = false
+daily_tvm = true
+paths = [
+  "actuator/src/main/java/org/tron/core/vm/PrecompiledContracts.java",
+  "actuator/src/main/java/org/tron/core/actuator/VMActuator.java",
+  "actuator/src/main/java/org/tron/core/vm/EnergyCost.java",
+  "actuator/src/main/java/org/tron/core/vm/program/Program.java",
+  "common/src/main/java/org/tron/core/vm/config/VMConfig.java",
+  "crypto/src/main/java/org/tron/common/crypto",
+]
+patterns = [
+  "actuator/src/main/java/org/tron/core/vm/PrecompiledContracts.java",
+  "crypto/src/main/java/org/tron/common/crypto/**",
+]
+focus = [
+  "Trace attacker-controlled calldata through offset/length decoding, allocation, validation, cryptographic work and result encoding.",
+  "Prove Energy is charged before attacker-scaled CPU or memory work and that integer conversions cannot bypass bounds.",
+  "Trace repository-backed native precompiles through authorization, mutation and rollback, including proposal-gated implementations.",
+]
+
+[[scopes]]
+id = "tvm-resource-limits"
+description = "Energy, memory, stack, call-depth and timeout enforcement"
+risk = "critical"
+rotation = false
+daily_tvm = true
+paths = [
+  "actuator/src/main/java/org/tron/core/vm/VM.java",
+  "actuator/src/main/java/org/tron/core/vm/EnergyCost.java",
+  "actuator/src/main/java/org/tron/core/vm/program/Program.java",
+  "actuator/src/main/java/org/tron/core/vm/program/Memory.java",
+  "actuator/src/main/java/org/tron/core/vm/program/Stack.java",
+  "chainbase/src/main/java/org/tron/common/runtime/ProgramResult.java",
+  "actuator/src/main/java/org/tron/core/actuator/VMActuator.java",
+]
+patterns = [
+  "actuator/src/main/java/org/tron/core/vm/EnergyCost.java",
+  "actuator/src/main/java/org/tron/core/vm/program/Memory.java",
+  "actuator/src/main/java/org/tron/core/vm/program/Stack.java",
+]
+focus = [
+  "Trace all attacker-scaled work from input to charge and verify charge-before-work ordering.",
+  "Check overflow, truncation and unit conversion in memory expansion, copy lengths, call depth, stack limits and refunds.",
+  "Follow CPU timeout and out-of-Energy exceptions through state rollback and externally visible result status.",
+]
+
+[[scopes]]
+id = "tvm-activation-replay"
+description = "Proposal activation, hard-fork snapshots and historical replay semantics"
+risk = "critical"
+rotation = false
+daily_tvm = true
+paths = [
+  "common/src/main/java/org/tron/core/vm/config/VMConfig.java",
+  "actuator/src/main/java/org/tron/core/vm/config/ConfigLoader.java",
+  "actuator/src/main/java/org/tron/core/utils/ProposalUtil.java",
+  "framework/src/main/java/org/tron/core/consensus/ProposalService.java",
+  "chainbase/src/main/java/org/tron/common/utils/ForkController.java",
+  "chainbase/src/main/java/org/tron/core/store/DynamicPropertiesStore.java",
+  "actuator/src/main/java/org/tron/core/actuator/VMActuator.java",
+  "actuator/src/main/java/org/tron/core/vm/OperationRegistry.java",
+]
+patterns = [
+  "common/src/main/java/org/tron/core/vm/config/VMConfig.java",
+  "actuator/src/main/java/org/tron/core/vm/config/ConfigLoader.java",
+  "actuator/src/main/java/org/tron/core/utils/ProposalUtil.java",
+  "framework/src/main/java/org/tron/core/consensus/ProposalService.java",
+  "chainbase/src/main/java/org/tron/common/utils/ForkController.java",
+]
+focus = [
+  "Build a gate matrix from proposal validation/application, dynamic storage, snapshot loading and execution reads.",
+  "Separate current HEAD execution, solidified/historical replay, reorg and test-only gate values.",
+  "Check activation atomicity and concurrent snapshot isolation without reporting intentionally retained pre-activation semantics as current vulnerabilities.",
+]
+
+[[scopes]]
+id = "tvm-simulation-parity"
+description = "Broadcast, constant-call, estimation and tracing semantic parity"
+risk = "critical"
+rotation = false
+daily_tvm = true
+paths = [
+  "framework/src/main/java/org/tron/common/runtime/RuntimeImpl.java",
+  "chainbase/src/main/java/org/tron/core/db/TransactionTrace.java",
+  "actuator/src/main/java/org/tron/core/actuator/VMActuator.java",
+  "actuator/src/main/java/org/tron/core/vm/program/Program.java",
+  "chainbase/src/main/java/org/tron/common/runtime/ProgramResult.java",
+  "actuator/src/main/java/org/tron/core/vm/OperationRegistry.java",
+  "actuator/src/main/java/org/tron/core/vm/config/ConfigLoader.java",
+]
+patterns = [
+  "framework/src/main/java/org/tron/common/runtime/RuntimeImpl.java",
+  "chainbase/src/main/java/org/tron/core/db/TransactionTrace.java",
+]
+focus = [
+  "Compare broadcast execution, constant calls, Energy estimation and trace/replay context construction and finalization.",
+  "Trace differences in proposal snapshots, opcode tables, repositories, call flags, timeout rules and result merging.",
+  "Require a concrete unsafe decision or consensus effect before treating intentional simulation differences as vulnerabilities.",
+]
+
 [[scopes]]
 id = "state-consensus"
 description = "Block validation, transaction lifecycle, snapshots, reorgs and DPoS/PBFT"

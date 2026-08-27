@@ -8,6 +8,18 @@ an earlier validator or resource limit blocks it, state is rolled back, the beha
 or the code never shipped or activated. Report a finding only if the candidate survives those
 checks and has a concrete invariant violation and reproducible consequence.
 
+For proposal, hard-fork, `VMConfig`, snapshot or legacy-branch candidates, independently trace the
+gate from proposal/fork storage through configuration loading to the exact execution context.
+Distinguish current HEAD execution from historical replay and tests that manually disable a gate.
+Reject the candidate if the affected branch was fixed before activation, is required only for
+historical consensus replay, or lacks evidence that the target production network can select it
+for a new transaction/block. `Reachability unverified` is a rejection/deferred result, not a
+formal vulnerability.
+
+For TVM candidates, reconstruct the whole selected execution slice: entry point, cross-module
+calls, Energy/resource charge, child state, result merge and rollback. A local suspicious line is
+not sufficient if its caller or activated branch prevents the impact.
+
 Give special attention to consensus determinism, authorization, asset conservation, TVM Energy,
 rollback/reorg behavior, remotely triggerable resource exhaustion, and release/runtime reachability.
 Do not treat agreement with another model as evidence.

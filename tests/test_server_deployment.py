@@ -21,10 +21,10 @@ class ServerDeploymentTests(unittest.TestCase):
         self.assertNotIn("--patch", script)
         self.assertNotIn("--create-pr", script)
 
-    def test_daily_runner_uses_fixed_tvm_mode_and_prevents_overlap(self) -> None:
+    def test_daily_runner_uses_rotating_tvm_mode_and_prevents_overlap(self) -> None:
         script = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")
         self.assertIn("--mode daily-tvm", script)
-        self.assertIn("--scope vm-execution", script)
+        self.assertNotIn("--scope vm-execution", script)
         self.assertIn("flock -n 9", script)
         self.assertRegex(script, re.compile(r"JTSR_RETENTION_DAYS.*90"))
 

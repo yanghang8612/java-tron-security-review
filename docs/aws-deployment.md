@@ -15,7 +15,7 @@ CodeBuild, one non-privileged container, concurrency 1
              |
              +--> clone exact java-tron revision and optional KB
              +--> daily-tvm: terra investigation + sol falsification
-             +--> fixed TVM paths, read-only source, bounded model cost
+             +--> one rotating TVM facet, read-only source, bounded model cost
              |
              v
 KMS-encrypted S3 evidence + KMS-encrypted CloudWatch logs
@@ -30,11 +30,11 @@ source-based Codex Security path scans. Dynamic validation remains a separate co
 
 ## Daily TVM scope
 
-Every run scans these configured paths even when there were no changes that day:
-
-- `actuator/src/main/java/org/tron/core/vm`
-- `actuator/src/main/java/org/tron/core/actuator/VMActuator.java`
-- `common/src/main/java/org/tron/core/vm`
+Every run selects one of eight TVM execution facets by day of year, even when there were no source
+changes. Facets cover entry/context, opcode dispatch, call/create, state rollback,
+precompiles/native work, resource limits, activation/replay and simulation parity. Each includes
+cross-module callers and sinks so the review follows a complete execution flow instead of scanning
+an isolated directory. Set `JTSR_SCOPE` only to force a specific facet for reproduction.
 
 The default OpenAI configuration runs two independent profiles: `gpt-5.6-terra` for the first
 investigation and `gpt-5.6-sol` with a skeptical prompt for falsification. Their configured maximum

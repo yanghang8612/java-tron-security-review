@@ -30,11 +30,15 @@ separate confirmation activities.
 
 ## Daily TVM scope
 
-Every run scans these paths even when the branch has not changed:
+Every run selects exactly one of eight configured TVM execution facets, even when the branch has
+not changed: entry/context, opcode dispatch, call/create, state rollback, precompiles/native work,
+resource limits, activation/replay, or simulation parity. Each facet includes the callers and
+sinks needed to follow control, data, Energy and state effects across module boundaries. The day
+of year selects the facet deterministically; use `jtsr plan --mode daily-tvm` to preview it or
+`--scope <facet-id>` to reproduce one explicitly.
 
-- `actuator/src/main/java/org/tron/core/vm`
-- `actuator/src/main/java/org/tron/core/actuator/VMActuator.java`
-- `common/src/main/java/org/tron/core/vm`
+The mandatory evidence gate rejects proposal-disabled, pre-hard-fork, historical-replay and
+test-only branches from formal findings unless current production reachability is established.
 
 The default profile pair uses `gpt-5.6-terra` for evidence-oriented triage, then gives each triage
 candidate its own `gpt-5.6-sol` skeptical-verifier invocation. One candidate hitting the explicit
@@ -125,8 +129,8 @@ The host wrapper writes results beneath:
     ├── target-revision.txt
     ├── run-manifest.json
     ├── aggregate.json
-    ├── triage-vm-execution/
-    └── verifier-vm-execution/
+    ├── triage-<tvm-facet>/
+    └── verifier-<tvm-facet>/
         ├── verification-manifest.json
         └── candidates/<candidate>/<model-attempt>/
 ```

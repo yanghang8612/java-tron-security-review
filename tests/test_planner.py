@@ -42,19 +42,42 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(plan.jobs[0].profile.name, "deep")
         self.assertEqual(plan.jobs[0].scope.id, "vm-execution")
 
-    def test_daily_tvm_always_scans_critical_vm_scope(self) -> None:
-        plan = build_plan(self.config, "daily-tvm")
+    def test_daily_tvm_rotates_one_critical_execution_facet(self) -> None:
+        plan = build_plan(self.config, "daily-tvm", day_of_year=1)
         self.assertEqual(plan.highest_risk, "critical")
         self.assertEqual(
             [job.profile.name for job in plan.jobs], ["triage", "verifier"]
         )
-        self.assertTrue(all(job.scope.id == "vm-execution" for job in plan.jobs))
+        self.assertTrue(all(job.scope.id == "tvm-entry-context" for job in plan.jobs))
         self.assertTrue(
             all(
-                "actuator/src/main/java/org/tron/core/vm" in job.paths
+                "actuator/src/main/java/org/tron/core/actuator/VMActuator.java"
+                in job.paths
                 for job in plan.jobs
             )
         )
+        self.assertTrue(all(job.scope.focus for job in plan.jobs))
+
+    def test_daily_tvm_advances_to_the_next_facet(self) -> None:
+        first = build_plan(self.config, "daily-tvm", day_of_year=1)
+        second = build_plan(self.config, "daily-tvm", day_of_year=2)
+        self.assertEqual(first.jobs[0].scope.id, "tvm-entry-context")
+        self.assertEqual(second.jobs[0].scope.id, "tvm-opcode-dispatch")
+
+    def test_daily_tvm_scope_can_be_forced_for_reproduction(self) -> None:
+        plan = build_plan(
+            self.config,
+            "daily-tvm",
+            scope_id="tvm-state-rollback",
+            day_of_year=1,
+        )
+        self.assertTrue(
+            all(job.scope.id == "tvm-state-rollback" for job in plan.jobs)
+        )
+
+    def test_daily_tvm_rejects_the_broad_weekly_scope(self) -> None:
+        with self.assertRaisesRegex(ValueError, "unknown daily TVM scope"):
+            build_plan(self.config, "daily-tvm", scope_id="vm-execution")
 
     def test_plan_serializes_paths(self) -> None:
         plan = build_plan(self.config, "weekly", iso_week=1)

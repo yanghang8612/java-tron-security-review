@@ -104,12 +104,33 @@ def _scope_by_id(config: AppConfig, scope_id: str) -> Scope:
     raise ValueError(f"unknown scope {scope_id!r}; choose one of: {choices}")
 
 
+def _daily_tvm_scope(
+    config: AppConfig, scope_id: str | None, day_of_year: int | None
+) -> Scope:
+    choices = [scope for scope in config.scopes if scope.daily_tvm]
+    if not choices:
+        raise ValueError("no daily TVM scopes are configured")
+    if scope_id:
+        for scope in choices:
+            if scope.id == scope_id:
+                return scope
+        allowed = ", ".join(scope.id for scope in choices)
+        raise ValueError(
+            f"unknown daily TVM scope {scope_id!r}; choose one of: {allowed}"
+        )
+    day = day_of_year or date.today().timetuple().tm_yday
+    if day < 1 or day > 366:
+        raise ValueError("day_of_year must be between 1 and 366")
+    return choices[(day - 1) % len(choices)]
+
+
 def build_plan(
     config: AppConfig,
     run_mode: str,
     files: tuple[str, ...] = (),
     scope_id: str | None = None,
     iso_week: int | None = None,
+    day_of_year: int | None = None,
 ) -> ScanPlan:
     if run_mode not in VALID_RUN_MODES:
         allowed = ", ".join(sorted(VALID_RUN_MODES))
@@ -118,7 +139,7 @@ def build_plan(
     matches = classify_files(config, files)
     selected_scope: Scope | None = None
     if run_mode == "daily-tvm":
-        selected_scope = _scope_by_id(config, scope_id or "vm-execution")
+        selected_scope = _daily_tvm_scope(config, scope_id, day_of_year)
         risk = selected_scope.risk
     else:
         risk = highest_risk(files, matches)

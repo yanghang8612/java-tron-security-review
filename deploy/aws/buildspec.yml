@@ -55,11 +55,13 @@ phases:
           --mode "${JTSR_MODE:-daily-tvm}"
           --target /tmp/jtsr-work/target
           --head "$TARGET_SHA"
-          --scope "${JTSR_SCOPE:-vm-execution}"
           --output-root /tmp/jtsr-work/output
           --run-id "$RUN_ID"
           --cli-bin /usr/local/bin/codex-security
         )
+        if [ -n "${JTSR_SCOPE:-}" ]; then
+          ARGS+=(--scope "$JTSR_SCOPE")
+        fi
 
         case "$SCAN_PROVIDER" in
           openai)

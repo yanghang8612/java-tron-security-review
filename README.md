@@ -13,7 +13,10 @@ SARIF, and keeps scan state outside the target worktree. It is advisory and read
   High/Critical candidates.
 - A GPT-5.5/xhigh fallback only when a GPT-5.6 verifier attempt returns the explicit Codex
   Security cyber-safety block; unrelated partial or operational failures are not retried.
-- Fixed-path daily TVM scans, nightly incremental scans and a seven-scope weekly deep-scan rotation.
+- One-facet-per-day TVM execution-flow reviews, nightly incremental scans and a seven-domain weekly
+  deep-scan rotation.
+- A hard production-reachability admission gate that rejects pre-activation, historical-replay and
+  test-only proposal branches from the formal finding list.
 - Release/manual full-repository scan modes.
 - Mandatory release/runtime reachability policy for every finding.
 - Environment filtering so the scanner does not inherit unrelated CI credentials.
@@ -93,10 +96,20 @@ Force a particular weekly deep-review scope:
 jtsr scan --mode weekly --target ../java-tron --scope vm-execution
 ```
 
-Run the same fixed TVM path plan used by the single-server daily schedule:
+Preview the same date-selected TVM facet used by the single-server daily schedule:
 
 ```bash
 jtsr scan --mode daily-tvm --target ../java-tron --dry-run
+```
+
+Force one facet when reproducing or comparing a result:
+
+```bash
+jtsr scan \
+  --mode daily-tvm \
+  --target ../java-tron \
+  --scope tvm-state-rollback \
+  --dry-run
 ```
 
 ## Results and privacy
@@ -132,7 +145,7 @@ finding IDs when available; it does not claim that model agreement proves exploi
 
 ## GitHub Actions
 
-- `.github/workflows/security-campaign.yml` runs daily TVM path scans, weekly rotating deep
+- `.github/workflows/security-campaign.yml` runs daily rotating TVM facet scans, weekly deep
   scans, and manual release/full scans from this control-plane repository.
 - Set the optional repository variable `JTSR_KB_REPOSITORY` to an authorized
   `owner/repository` if a private knowledge base should be included. It is disabled by default.
@@ -152,7 +165,7 @@ enabled for new, independently verified and production-reachable High/Critical f
 
 The default deployment targets one manually operated Linux server, including an ordinary AWS EC2
 instance. A systemd timer starts one constrained Docker container each day, fetches an exact
-java-tron revision into temporary storage, scans the fixed TVM paths, and keeps reports locally.
+java-tron revision into temporary storage, selects one TVM execution facet, and keeps reports locally.
 It requires no AWS-managed build or scheduler services and opens no network port.
 
 OpenAI authentication can use a persisted ChatGPT device sign-in or a dedicated API key. ChatGPT
@@ -170,8 +183,9 @@ system and no cloud resources are created by this repository.
 - `config/system.toml`: CLI pin, target/output defaults and knowledge bases.
 - `config/profiles.toml`: models, effort, modes, per-finding/fallback policy, cost and deep-scan
   limits.
-- `config/scopes.toml`: java-tron path-to-risk routing and weekly rotation.
+- `config/scopes.toml`: java-tron path-to-risk routing, daily TVM facets and weekly rotation.
 - `knowledge/threat-model.md`: mandatory security and reachability policy.
+- `knowledge/tvm-review-playbook.md`: proposal-gate and cross-module TVM tracing method.
 - `prompts/`: normal investigation, independent falsification and post-scan evidence gate.
 
 Optional local knowledge comes from the sibling `java-tron-kb` repository when present. The KB is

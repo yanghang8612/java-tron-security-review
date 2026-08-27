@@ -14,7 +14,8 @@ scheduled path/repository review and cannot scan a diff.
 
 ## Cadence
 
-- Daily TVM at 02:17 Asia/Shanghai: fixed `vm-execution` paths, even with no source changes.
+- Daily TVM at 02:17 Asia/Shanghai: one of eight execution-flow facets selected by day of year,
+  even with no source changes.
 - Nightly incremental mode, when invoked manually: changes from the prior comparison window.
 - Weekly: one of seven critical/risk domains selected by ISO week.
 - Pull requests: exact merge-base-to-head diff, same-repository branches only.
@@ -68,6 +69,10 @@ checkout token.
 
 Model profiles and prompts are versioned evidence. Record their exact versions in the run
 manifest when comparing scan quality over time.
+
+Formal findings require current production reachability. Proposal-disabled, pre-hard-fork,
+historical-replay and test-only branches are coverage/deferred notes unless the reviewer proves
+the stated production network can select them for a new transaction or block.
 
 ## Single-server runbook
 
