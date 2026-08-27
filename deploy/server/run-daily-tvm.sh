@@ -49,14 +49,19 @@ JTSR_PIDS_LIMIT="${JTSR_PIDS_LIMIT:-512}"
 JTSR_DOCKER_NETWORK="${JTSR_DOCKER_NETWORK:-bridge}"
 JTSR_SCANNER_UID="${JTSR_SCANNER_UID:-10001}"
 JTSR_SCANNER_GID="${JTSR_SCANNER_GID:-10001}"
+JTSR_SECCOMP_PROFILE="${JTSR_SECCOMP_PROFILE:-/etc/java-tron-security-review/codex-security-seccomp.json}"
 
 JTSR_OUTPUT_ROOT="$(realpath -m -- "$JTSR_OUTPUT_ROOT")"
 JTSR_WORK_ROOT="$(realpath -m -- "$JTSR_WORK_ROOT")"
 JTSR_AUTH_ROOT="$(realpath -m -- "$JTSR_AUTH_ROOT")"
+JTSR_SECCOMP_PROFILE="$(realpath -m -- "$JTSR_SECCOMP_PROFILE")"
 
 validate_absolute_directory JTSR_OUTPUT_ROOT "$JTSR_OUTPUT_ROOT"
 validate_absolute_directory JTSR_WORK_ROOT "$JTSR_WORK_ROOT"
 validate_absolute_directory JTSR_AUTH_ROOT "$JTSR_AUTH_ROOT"
+[[ "$JTSR_SECCOMP_PROFILE" == /* ]] || fail "JTSR_SECCOMP_PROFILE must be an absolute path"
+[[ -f "$JTSR_SECCOMP_PROFILE" && ! -L "$JTSR_SECCOMP_PROFILE" ]] || \
+  fail "JTSR_SECCOMP_PROFILE must be a regular non-symlink file"
 [[ "$JTSR_OUTPUT_ROOT" != "$JTSR_WORK_ROOT" ]] || fail "output and work roots must differ"
 [[ "$JTSR_OUTPUT_ROOT" != "$JTSR_WORK_ROOT"/* ]] || fail "output root must not be inside the work root"
 [[ "$JTSR_WORK_ROOT" != "$JTSR_OUTPUT_ROOT"/* ]] || fail "work root must not be inside the output root"
@@ -75,6 +80,11 @@ validate_absolute_directory JTSR_AUTH_ROOT "$JTSR_AUTH_ROOT"
 [[ "$JTSR_TARGET_REPOSITORY_URL" == https://* ]] || fail "target repository URL must use HTTPS"
 [[ "$JTSR_TARGET_REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] || fail "target ref contains unsupported characters"
 [[ "$JTSR_TARGET_REF" != *".."* && "$JTSR_TARGET_REF" != *"@{"* ]] || fail "target ref is unsafe"
+
+if [[ -r /proc/sys/user/max_user_namespaces ]] && \
+   [[ "$(cat /proc/sys/user/max_user_namespaces)" == "0" ]]; then
+  fail "Codex Security sandbox requires user.max_user_namespaces > 0; rerun the installer with --enable-userns after reviewing the host security impact"
+fi
 
 install -d -m 0700 -o "$JTSR_SCANNER_UID" -g "$JTSR_SCANNER_GID" "$JTSR_OUTPUT_ROOT"
 install -d -m 0700 -o root -g root "$JTSR_WORK_ROOT"
@@ -221,6 +231,7 @@ DOCKER_ARGS=(
   --read-only
   --cap-drop ALL
   --security-opt no-new-privileges
+  --security-opt "seccomp=$JTSR_SECCOMP_PROFILE"
   --pids-limit "$JTSR_PIDS_LIMIT"
   --memory "$JTSR_MEMORY_LIMIT"
   --cpus "$JTSR_CPU_LIMIT"

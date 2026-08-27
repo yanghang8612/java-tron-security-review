@@ -2,17 +2,22 @@
 set -euo pipefail
 
 ENABLE_TIMER=false
+ENABLE_USERNS=false
 SKIP_BUILD=false
 IMAGE_NAME="${JTSR_INSTALL_IMAGE:-java-tron-security-review:local}"
 
 usage() {
-  printf 'Usage: sudo %s [--enable] [--skip-build] [--image IMAGE]\n' "$0"
+  printf 'Usage: sudo %s [--enable] [--enable-userns] [--skip-build] [--image IMAGE]\n' "$0"
 }
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --enable)
       ENABLE_TIMER=true
+      shift
+      ;;
+    --enable-userns)
+      ENABLE_USERNS=true
       shift
       ;;
     --skip-build)
@@ -51,6 +56,10 @@ for required in docker git flock getent groupadd systemctl useradd; do
     exit 1
   fi
 done
+if [[ "$ENABLE_USERNS" == true ]] && ! command -v sysctl >/dev/null 2>&1; then
+  printf 'required command not found: sysctl\n' >&2
+  exit 1
+fi
 
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_DIR="$(cd -- "$SCRIPT_DIR/../.." && pwd)"
@@ -112,6 +121,7 @@ install -d -m 0700 -o "$SCANNER_UID" -g "$SCANNER_GID" "$AUTH_ROOT"
 install -m 0755 "$SCRIPT_DIR/run-daily-tvm.sh" "$LIBEXEC_DIR/run-daily-tvm"
 install -m 0755 "$SCRIPT_DIR/auth-chatgpt.sh" "$LIBEXEC_DIR/auth-chatgpt"
 install -m 0755 "$SCRIPT_DIR/notify-failure.sh" "$LIBEXEC_DIR/notify-failure"
+install -m 0644 "$SCRIPT_DIR/codex-security-seccomp.json" "$CONFIG_DIR/codex-security-seccomp.json"
 install -m 0644 "$SCRIPT_DIR/java-tron-security-review-auth@.service" /etc/systemd/system/java-tron-security-review-auth@.service
 install -m 0644 "$SCRIPT_DIR/java-tron-security-review.service" /etc/systemd/system/java-tron-security-review.service
 install -m 0644 "$SCRIPT_DIR/java-tron-security-review.timer" /etc/systemd/system/java-tron-security-review.timer
@@ -125,6 +135,11 @@ else
 fi
 
 systemctl daemon-reload
+if [[ "$ENABLE_USERNS" == true ]]; then
+  install -m 0644 "$SCRIPT_DIR/java-tron-security-review-userns.conf" \
+    /etc/sysctl.d/90-java-tron-security-review-userns.conf
+  sysctl -q -w user.max_user_namespaces=1024
+fi
 if [[ "$ENABLE_TIMER" == true ]]; then
   systemctl enable --now java-tron-security-review.timer
 else
@@ -135,6 +150,12 @@ else
   printf 'Then run the acceptance scan and enable the timer:\n'
   printf '  systemctl start java-tron-security-review.service\n'
   printf '  systemctl enable --now java-tron-security-review.timer\n'
+fi
+
+if [[ -r /proc/sys/user/max_user_namespaces ]] && \
+   [[ "$(cat /proc/sys/user/max_user_namespaces)" == "0" ]]; then
+  printf 'Codex Security sandbox is blocked because user.max_user_namespaces=0.\n' >&2
+  printf 'Review the security implication, then rerun this installer with --enable-userns.\n' >&2
 fi
 
 printf 'Installed scanner image %s and single-server runtime files.\n' "$IMAGE_NAME"

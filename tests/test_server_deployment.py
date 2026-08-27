@@ -1,4 +1,5 @@
 import json
+import hashlib
 import re
 import tomllib
 import unittest
@@ -17,10 +18,41 @@ class ServerDeploymentTests(unittest.TestCase):
         self.assertIn("--read-only", script)
         self.assertIn("--cap-drop ALL", script)
         self.assertIn("--security-opt no-new-privileges", script)
+        self.assertIn('--security-opt "seccomp=$JTSR_SECCOMP_PROFILE"', script)
         self.assertIn('--user "$JTSR_SCANNER_UID:$JTSR_SCANNER_GID"', script)
         self.assertIn('chmod -R a+rX,a-w "$TARGET_DIR"', script)
         self.assertNotIn("--patch", script)
         self.assertNotIn("--create-pr", script)
+
+    def test_server_installs_the_pinned_codex_security_seccomp_profile(self) -> None:
+        profile_path = SERVER / "codex-security-seccomp.json"
+        profile_bytes = profile_path.read_bytes()
+        self.assertEqual(
+            hashlib.sha256(profile_bytes).hexdigest(),
+            "4d9767cdcdc79338c0ce172baab5042d1c5a7d847a0d73a10e308f54c44a286d",
+        )
+        profile = json.loads(profile_bytes)
+        allowed = {
+            name
+            for rule in profile["syscalls"]
+            if rule["action"] == "SCMP_ACT_ALLOW"
+            for name in rule["names"]
+        }
+        for syscall in ("clone", "clone3", "mount", "unshare"):
+            self.assertIn(syscall, allowed)
+        installer = (SERVER / "install.sh").read_text(encoding="utf-8")
+        self.assertIn("codex-security-seccomp.json", installer)
+
+    def test_user_namespace_enablement_is_explicit_and_bounded(self) -> None:
+        installer = (SERVER / "install.sh").read_text(encoding="utf-8")
+        runner = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")
+        sysctl = (SERVER / "java-tron-security-review-userns.conf").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("--enable-userns", installer)
+        self.assertIn("user.max_user_namespaces = 1024", sysctl)
+        self.assertIn("user.max_user_namespaces=1024", installer)
+        self.assertIn("user.max_user_namespaces > 0", runner)
 
     def test_daily_runner_uses_rotating_tvm_mode_and_prevents_overlap(self) -> None:
         script = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")

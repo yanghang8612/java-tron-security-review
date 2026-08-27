@@ -20,6 +20,8 @@ class PolicyTests(unittest.TestCase):
         self.assertIn("`reportable`: only when", validation_prompt)
         self.assertIn("production-reachable", validation_prompt)
         self.assertIn("Do not edit scan-manifest.json", validation_prompt)
+        self.assertIn("keep its repository worktree read-only", scan_prompt)
+        self.assertIn("scan output directory is authorized and", scan_prompt)
 
     def test_tvm_playbook_is_a_required_knowledge_base(self) -> None:
         config = load_config(ROOT)

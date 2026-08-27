@@ -14,7 +14,8 @@ root host wrapper, protected by flock
         +--> root-owned, read-only target mount
         |
         v
-one non-root Docker container (dedicated uid 10001, no capabilities, bounded CPU/RAM)
+one non-root Docker container (dedicated uid 10001, no capabilities, bounded CPU/RAM,
+the seccomp profile pinned to Codex Security 0.1.20)
         |
         +--> daily-tvm triage profile
         +--> daily-tvm independent verifier profile
@@ -58,6 +59,8 @@ guarantee complete coverage.
 - Outbound HTTPS to GitHub and the configured model provider.
 - Enough capacity for the default container limits: 4 CPUs, 8 GiB RAM, and 512 processes.
 - An authorized, private location for scan reports.
+- Unprivileged user namespaces for Codex Security's inner filesystem sandbox. On hosts exposing
+  `/proc/sys/user/max_user_namespaces`, the value must be greater than zero.
 
 If this runs on the same EC2 instance as a node, measure spare CPU, memory, disk, and outbound
 bandwidth before enabling the timer. Reduce `JTSR_CPU_LIMIT` and `JTSR_MEMORY_LIMIT` when necessary;
@@ -73,6 +76,21 @@ cd /opt/java-tron-security-review
 sudo deploy/server/install.sh
 sudoedit /etc/java-tron-security-review/jtsr.env
 ```
+
+The installer deploys the syscall allowlist shipped by the pinned Codex Security release while
+retaining the non-root uid, `--cap-drop ALL`, `no-new-privileges`, a read-only container root, and a
+read-only target mount. If the installer reports `user.max_user_namespaces=0`, the kernel is
+blocking the inner sandbox. After reviewing the host-wide security implication, opt in to a finite
+limit and reinstall:
+
+```bash
+sudo deploy/server/install.sh --enable-userns
+cat /proc/sys/user/max_user_namespaces
+```
+
+This installs `/etc/sysctl.d/90-java-tron-security-review-userns.conf` with a limit of 1024 and
+applies it immediately. The setting is global to the host, so do not enable it implicitly on a
+shared machine. The daily wrapper checks it before cloning or starting a paid scan.
 
 The new-install default is `JTSR_AUTH=chatgpt`. Keep `OPENAI_API_KEY` empty and keep `JTSR_MODEL`
 empty to retain the two configured models. The installer deliberately does not enable the timer on
@@ -211,6 +229,10 @@ The installer preserves the existing `/etc/java-tron-security-review/jtsr.env`. 
 check out the previously reviewed repository commit, rerun the installer, and run an acceptance
 scan. Do not enable automatic pulls of the scanner control plane; upgrades should be reviewed and
 manual.
+
+The `--enable-userns` setting is persistent and is not removed by a code rollback. To remove it,
+first stop the scanner and keep the timer disabled, then delete the dedicated sysctl file and apply
+the operator-approved replacement value for `user.max_user_namespaces`.
 
 An installation upgraded from an API-key-only revision also preserves its old environment file.
 To migrate it, add `JTSR_AUTH=chatgpt` and

@@ -23,7 +23,8 @@ SARIF, and keeps scan state outside the target worktree. It is advisory and read
 - Private run manifests, logs, native CLI artifacts, SARIF exports and cross-profile grouping.
 - A reusable PR workflow plus a scheduled/dispatch campaign workflow.
 - A default single-server deployment for manually operated Linux/EC2 hosts: local Docker image,
-  systemd timer, overlap protection, CPU/RAM limits, private reports, retention and failure webhook.
+  systemd timer, overlap protection, CPU/RAM limits, a pinned Codex Security seccomp profile,
+  private reports, retention and failure webhook.
 - An optional AWS-managed CodeBuild/EventBridge deployment for operators who explicitly want it.
 - Dependency-free Python control plane with offline unit tests.
 
