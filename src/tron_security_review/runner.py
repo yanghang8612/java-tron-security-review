@@ -222,12 +222,18 @@ def build_scan_command(
             job.profile.scan_mode,
             "--scan-prompt-file",
             str(prompt_path),
-            "--post-scan-prompt-file",
-            str(config.system.post_scan_prompt),
             "--headless",
             "--json",
         ]
     )
+    # Codex Security custom validation uses a schema-constrained validation turn.
+    # Unlike the legacy post-scan follow-up, it cannot append malformed data to
+    # coverage.json. Per-finding jobs already perform a dedicated independent
+    # review, while Deep scans do not support custom validation.
+    if job.profile.scan_mode != "deep" and not job.profile.per_finding:
+        command.extend(
+            ["--validation-prompt-file", str(config.system.validation_prompt)]
+        )
     if provider != "amazon-bedrock" and not dry_run:
         command.extend(["--auth", auth])
     for knowledge_base in knowledge_bases:

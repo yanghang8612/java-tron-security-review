@@ -1,6 +1,6 @@
 FROM node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba3275657f93595428be4fc03
 
-ARG CODEX_SECURITY_VERSION=0.1.16
+ARG CODEX_SECURITY_VERSION=0.1.20
 
 RUN apt-get -o Acquire::http::No-Cache=true update \
     && apt-get -o Acquire::http::No-Cache=true install \

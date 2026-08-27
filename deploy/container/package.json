@@ -6,7 +6,7 @@
     "node": "24.x"
   },
   "dependencies": {
-    "@openai/codex-security": "0.1.16"
+    "@openai/codex-security": "0.1.20"
   },
   "optionalDependencies": {
     "@openai/codex-linux-arm64": "npm:@openai/codex@0.148.0-alpha.8-linux-arm64",

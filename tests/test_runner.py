@@ -311,6 +311,8 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("--patch", command)
         self.assertNotIn("--create-pr", command)
         self.assertNotIn("--plugin-path", command)
+        self.assertIn("--validation-prompt-file", command)
+        self.assertNotIn("--post-scan-prompt-file", command)
 
     def test_deep_command_uses_paths_not_diff(self) -> None:
         plan = build_plan(self.config, "weekly", iso_week=1)
@@ -333,6 +335,8 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(command[command.index("--mode") + 1], "deep")
         self.assertIn("--path", command)
         self.assertNotIn("--diff", command)
+        self.assertNotIn("--validation-prompt-file", command)
+        self.assertNotIn("--post-scan-prompt-file", command)
 
     def test_daily_tvm_standard_command_uses_paths(self) -> None:
         plan = build_plan(self.config, "daily-tvm", day_of_year=1)
@@ -357,6 +361,31 @@ class RunnerTests(unittest.TestCase):
             command,
         )
         self.assertNotIn("--diff", command)
+        self.assertEqual(
+            command[command.index("--validation-prompt-file") + 1],
+            str(self.config.system.validation_prompt),
+        )
+        self.assertNotIn("--post-scan-prompt-file", command)
+
+    def test_per_finding_verifier_does_not_repeat_custom_validation(self) -> None:
+        plan = build_plan(self.config, "daily-tvm", day_of_year=1)
+        verifier = next(job for job in plan.jobs if job.profile.per_finding)
+        command = build_scan_command(
+            config=self.config,
+            job=verifier,
+            plan=plan,
+            target=ROOT.parent / "java-tron",
+            scan_dir=ROOT / "var/test/verifier-results",
+            prompt_path=ROOT / "prompts/skeptic.md",
+            knowledge_bases=available_knowledge_bases(self.config),
+            auth="api-key",
+            cli_bin=None,
+            base_commit=None,
+            head_commit="b" * 40,
+            dry_run=True,
+        )
+        self.assertNotIn("--validation-prompt-file", command)
+        self.assertNotIn("--post-scan-prompt-file", command)
 
     def test_daily_tvm_prompt_contains_cross_module_focus(self) -> None:
         plan = build_plan(self.config, "daily-tvm", day_of_year=4)

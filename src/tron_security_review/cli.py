@@ -91,9 +91,9 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         record("knowledge_bases", False, str(error))
     record("scan_prompt", config.system.scan_prompt.is_file(), str(config.system.scan_prompt))
     record(
-        "post_scan_prompt",
-        config.system.post_scan_prompt.is_file(),
-        str(config.system.post_scan_prompt),
+        "validation_prompt",
+        config.system.validation_prompt.is_file(),
+        str(config.system.validation_prompt),
     )
     print(json.dumps({"ok": all(check["ok"] for check in checks), "checks": checks}, indent=2))
     return 0 if all(check["ok"] for check in checks) else 1

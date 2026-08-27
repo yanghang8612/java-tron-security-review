@@ -4,7 +4,7 @@
 
 `npm audit` currently reports High-severity
 [GHSA-jmr9-qjv8-65gv](https://github.com/advisories/GHSA-jmr9-qjv8-65gv) against
-`extract-zip@2.0.1`. The current latest `@openai/codex-security@0.1.16` directly pins that version,
+`extract-zip@2.0.1`. The pinned `@openai/codex-security@0.1.20` directly pins that version,
 and npm publishes no fixed `extract-zip` release.
 
 This is a temporary, explicit exception rather than a claim that the dependency is generally safe.

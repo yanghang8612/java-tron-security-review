@@ -43,7 +43,7 @@ env:
   TARGET_REPOSITORY: ${{ inputs.target_repository || 'tronprotocol/java-tron' }}
   TARGET_REF: ${{ inputs.target_ref || 'develop' }}
   SCAN_MODE: ${{ github.event_name == 'workflow_dispatch' && inputs.mode || (github.event.schedule == '41 19 * * 6' && 'weekly' || 'daily-tvm') }}
-  CODEX_SECURITY_VERSION: "0.1.16"
+  CODEX_SECURITY_VERSION: "0.1.20"
   KB_REPOSITORY: ${{ vars.JTSR_KB_REPOSITORY }}
 
 jobs:

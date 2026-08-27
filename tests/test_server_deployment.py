@@ -1,5 +1,6 @@
 import json
 import re
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -58,6 +59,33 @@ class ServerDeploymentTests(unittest.TestCase):
         self.assertIn("codex --version", dockerfile)
         self.assertIn("@openai/codex-linux-arm64", package["optionalDependencies"])
         self.assertIn("@openai/codex-linux-x64", package["optionalDependencies"])
+
+    def test_codex_security_version_is_pinned_consistently(self) -> None:
+        container = ROOT / "deploy" / "container"
+        package = json.loads((container / "package.json").read_text(encoding="utf-8"))
+        lock = json.loads(
+            (container / "package-lock.json").read_text(encoding="utf-8")
+        )
+        with (ROOT / "config" / "system.toml").open("rb") as handle:
+            system = tomllib.load(handle)["system"]
+        expected = package["dependencies"]["@openai/codex-security"]
+        self.assertEqual(
+            system["cli_package"], f"@openai/codex-security@{expected}"
+        )
+        self.assertEqual(
+            lock["packages"]["node_modules/@openai/codex-security"]["version"],
+            expected,
+        )
+        dockerfile = (container / "Dockerfile").read_text(encoding="utf-8")
+        campaign = (ROOT / ".github/workflows/security-campaign.yml").read_text(
+            encoding="utf-8"
+        )
+        reusable = (ROOT / ".github/workflows/reusable-pr.yml").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn(f"ARG CODEX_SECURITY_VERSION={expected}", dockerfile)
+        self.assertIn(f'CODEX_SECURITY_VERSION: "{expected}"', campaign)
+        self.assertIn(f"@openai/codex-security@{expected}", reusable)
 
     def test_chatgpt_auth_is_persistent_and_separate_from_reports(self) -> None:
         runner = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")

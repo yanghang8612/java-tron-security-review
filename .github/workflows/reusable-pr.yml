@@ -83,7 +83,7 @@ jobs:
             --ignore-scripts \
             --no-audit \
             --no-fund \
-            @openai/codex-security@0.1.16
+            @openai/codex-security@0.1.20
           "$RUNNER_TEMP/codex-security/node_modules/.bin/codex-security" --version
 
       - name: Install control plane

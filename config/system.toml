@@ -1,6 +1,6 @@
 [system]
 name = "java-tron-security-review"
-cli_package = "@openai/codex-security@0.1.16"
+cli_package = "@openai/codex-security@0.1.20"
 default_target = "../java-tron"
 output_root = "var/scans"
 default_auth = "auto"
@@ -17,4 +17,4 @@ optional_knowledge_bases = [
 ]
 
 scan_prompt = "prompts/scan.md"
-post_scan_prompt = "prompts/post-scan.md"
+validation_prompt = "prompts/validation.md"

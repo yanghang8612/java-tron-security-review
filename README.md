@@ -81,7 +81,7 @@ discard unrelated work merely to run a scheduled review.
 Run a live local scan after signing in:
 
 ```bash
-npx @openai/codex-security@0.1.16 login
+npx @openai/codex-security@0.1.20 login
 jtsr scan \
   --mode pr \
   --target ../java-tron \
@@ -186,7 +186,7 @@ system and no cloud resources are created by this repository.
 - `config/scopes.toml`: java-tron path-to-risk routing, daily TVM facets and weekly rotation.
 - `knowledge/threat-model.md`: mandatory security and reachability policy.
 - `knowledge/tvm-review-playbook.md`: proposal-gate and cross-module TVM tracing method.
-- `prompts/`: normal investigation, independent falsification and post-scan evidence gate.
+- `prompts/`: normal investigation, independent falsification and structured final validation gate.
 
 Optional local knowledge comes from the sibling `java-tron-kb` repository when present. The KB is
 orientation only; its draft claims must be rechecked against the target source.

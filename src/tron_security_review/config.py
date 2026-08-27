@@ -19,7 +19,7 @@ class SystemConfig:
     knowledge_bases: tuple[Path, ...]
     optional_knowledge_bases: tuple[Path, ...]
     scan_prompt: Path
-    post_scan_prompt: Path
+    validation_prompt: Path
 
 
 @dataclass(frozen=True)
@@ -114,7 +114,7 @@ def load_config(root: Path | None = None) -> AppConfig:
             for value in raw_system.get("optional_knowledge_bases", [])
         ),
         scan_prompt=_resolve(root, raw_system["scan_prompt"]),
-        post_scan_prompt=_resolve(root, raw_system["post_scan_prompt"]),
+        validation_prompt=_resolve(root, raw_system["validation_prompt"]),
     )
 
     profiles: list[Profile] = []
