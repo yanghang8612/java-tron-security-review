@@ -124,6 +124,7 @@ install -m 0755 "$SCRIPT_DIR/notify-failure.sh" "$LIBEXEC_DIR/notify-failure"
 install -m 0644 "$SCRIPT_DIR/codex-security-seccomp.json" "$CONFIG_DIR/codex-security-seccomp.json"
 install -m 0644 "$SCRIPT_DIR/java-tron-security-review-auth@.service" /etc/systemd/system/java-tron-security-review-auth@.service
 install -m 0644 "$SCRIPT_DIR/java-tron-security-review.service" /etc/systemd/system/java-tron-security-review.service
+install -m 0644 "$SCRIPT_DIR/java-tron-security-review-verify@.service" /etc/systemd/system/java-tron-security-review-verify@.service
 install -m 0644 "$SCRIPT_DIR/java-tron-security-review.timer" /etc/systemd/system/java-tron-security-review.timer
 install -m 0644 "$SCRIPT_DIR/java-tron-security-review-notify@.service" /etc/systemd/system/java-tron-security-review-notify@.service
 

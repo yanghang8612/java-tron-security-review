@@ -11,6 +11,15 @@ SERVER = ROOT / "deploy" / "server"
 
 
 class ServerDeploymentTests(unittest.TestCase):
+    def test_verification_only_mounts_source_read_only_and_preserves_daily_status(self):
+        script = (SERVER / "run-daily-tvm.sh").read_text()
+        self.assertIn("dst=/scan/source,readonly", script)
+        self.assertIn("src=$RUN_DIR,dst=/scan/output/$RUN_ID", script)
+        self.assertIn("jtsr verify --source-run /scan/source", script)
+        self.assertIn("JTSR_VERIFY_PLAN_ONLY", script)
+        self.assertIn("last-verification.json", script)
+        self.assertIn("latest-verification", script)
+
     def test_daily_runner_keeps_source_read_only_and_reports_outside_it(self) -> None:
         script = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")
         self.assertIn("dst=/scan/target,readonly", script)

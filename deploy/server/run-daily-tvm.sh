@@ -50,6 +50,8 @@ JTSR_DOCKER_NETWORK="${JTSR_DOCKER_NETWORK:-bridge}"
 JTSR_SCANNER_UID="${JTSR_SCANNER_UID:-10001}"
 JTSR_SCANNER_GID="${JTSR_SCANNER_GID:-10001}"
 JTSR_SECCOMP_PROFILE="${JTSR_SECCOMP_PROFILE:-/etc/java-tron-security-review/codex-security-seccomp.json}"
+JTSR_VERIFY_SOURCE_RUN="${JTSR_VERIFY_SOURCE_RUN:-}"
+JTSR_VERIFY_PLAN_ONLY="${JTSR_VERIFY_PLAN_ONLY:-0}"
 
 JTSR_OUTPUT_ROOT="$(realpath -m -- "$JTSR_OUTPUT_ROOT")"
 JTSR_WORK_ROOT="$(realpath -m -- "$JTSR_WORK_ROOT")"
@@ -93,6 +95,17 @@ exec 9>"$JTSR_WORK_ROOT/daily-tvm.lock"
 if ! flock -n 9; then
   printf 'java-tron-security-review: another scan is already running; skipping overlap\n'
   exit 0
+fi
+
+SOURCE_RUN_DIR=""
+if [[ -n "$JTSR_VERIFY_SOURCE_RUN" ]]; then
+  [[ "$JTSR_VERIFY_SOURCE_RUN" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$ ]] || fail "invalid source run id"
+  SOURCE_RUN_DIR="$JTSR_OUTPUT_ROOT/$JTSR_VERIFY_SOURCE_RUN"
+  [[ -d "$SOURCE_RUN_DIR" && ! -L "$SOURCE_RUN_DIR" ]] || fail "source run must be a real directory"
+  [[ -f "$SOURCE_RUN_DIR/target-revision.txt" && ! -L "$SOURCE_RUN_DIR/target-revision.txt" ]] || fail "source revision is unavailable"
+  JTSR_TARGET_REF="$(head -c 80 "$SOURCE_RUN_DIR/target-revision.txt" | tr -d '\r\n')"
+  [[ "$JTSR_TARGET_REF" =~ ^[0-9a-f]{40}$ ]] || fail "invalid source revision"
+  [[ -z "${JTSR_MODEL:-}" && "$JTSR_PROVIDER" == openai ]] || fail "verification uses configured bounded profiles, without provider/model overrides"
 fi
 
 RUNTIME_DOCKER_ARGS=()
@@ -176,11 +189,13 @@ esac
 
 # Retention is restricted to run directories created by this script. State, status,
 # and arbitrary directories under the output root are never selected.
-find "$JTSR_OUTPUT_ROOT" \
+if [[ -z "$JTSR_VERIFY_SOURCE_RUN" ]]; then
+  find "$JTSR_OUTPUT_ROOT" \
   -mindepth 1 -maxdepth 1 -type d \
   -name '????????T??????Z-daily-tvm-[0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f][0-9a-f]' \
   -mtime "+$JTSR_RETENTION_DAYS" \
   -print -exec rm -rf -- {} +
+fi
 
 RUN_WORK="$(mktemp -d "$JTSR_WORK_ROOT/run.XXXXXXXX")"
 TARGET_DIR="$RUN_WORK/target"
@@ -219,7 +234,14 @@ TARGET_SHA="$(git_in_target rev-parse HEAD)"
 chmod -R a+rX,a-w "$TARGET_DIR"
 
 RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-daily-tvm-${TARGET_SHA:0:12}"
+if [[ -n "$JTSR_VERIFY_SOURCE_RUN" ]]; then
+  [[ "$TARGET_SHA" == "$JTSR_TARGET_REF" ]] || fail "verification checkout differs from source revision"
+  RUN_ID="$(date -u +%Y%m%dT%H%M%SZ)-verify-${TARGET_SHA:0:12}"
+fi
 RUN_DIR="$JTSR_OUTPUT_ROOT/$RUN_ID"
+if [[ -n "$JTSR_VERIFY_SOURCE_RUN" && "$JTSR_VERIFY_PLAN_ONLY" == 1 ]]; then
+  RUN_DIR="$RUN_WORK/preflight-output/$RUN_ID"
+fi
 install -d -m 0700 -o "$JTSR_SCANNER_UID" -g "$JTSR_SCANNER_GID" "$RUN_DIR"
 printf '%s\n' "$TARGET_SHA" > "$RUN_DIR/target-revision.txt"
 chown "$JTSR_SCANNER_UID:$JTSR_SCANNER_GID" "$RUN_DIR/target-revision.txt"
@@ -239,12 +261,21 @@ DOCKER_ARGS=(
   --tmpfs "/tmp:rw,nosuid,nodev,noexec,size=1g,uid=$JTSR_SCANNER_UID,gid=$JTSR_SCANNER_GID"
   --tmpfs "/home/scanner:rw,nosuid,nodev,noexec,size=256m,uid=$JTSR_SCANNER_UID,gid=$JTSR_SCANNER_GID"
   --mount "type=bind,src=$TARGET_DIR,dst=/scan/target,readonly"
-  --mount "type=bind,src=$JTSR_OUTPUT_ROOT,dst=/scan/output"
   --env HOME=/home/scanner
   --env TMPDIR=/tmp
   --env NO_COLOR=1
 )
 DOCKER_ARGS+=("${RUNTIME_DOCKER_ARGS[@]}")
+if [[ -n "$JTSR_VERIFY_SOURCE_RUN" ]]; then
+  # Only this new run is writable. Old reports are not reachable through another
+  # writable mount; the selected source report has its own read-only mount.
+  DOCKER_ARGS+=(
+    --mount "type=bind,src=$RUN_DIR,dst=/scan/output/$RUN_ID"
+    --mount "type=bind,src=$SOURCE_RUN_DIR,dst=/scan/source,readonly"
+  )
+else
+  DOCKER_ARGS+=(--mount "type=bind,src=$JTSR_OUTPUT_ROOT,dst=/scan/output")
+fi
 
 for proxy_name in HTTPS_PROXY HTTP_PROXY ALL_PROXY NO_PROXY; do
   if [[ -n "${!proxy_name:-}" ]]; then
@@ -262,6 +293,17 @@ SCAN_ARGS=(
   --cli-bin /usr/local/bin/codex-security
 )
 SCAN_ARGS+=("${RUNTIME_SCAN_ARGS[@]}")
+if [[ -n "$JTSR_VERIFY_SOURCE_RUN" ]]; then
+  SCAN_ARGS=(jtsr verify --source-run /scan/source --target /scan/target
+    --output-root /scan/output --run-id "$RUN_ID" --cli-bin /usr/local/bin/codex-security)
+  SCAN_ARGS+=("${RUNTIME_SCAN_ARGS[@]}")
+  docker "${DOCKER_ARGS[@]}" "$JTSR_IMAGE" jtsr doctor --target /scan/target
+  docker "${DOCKER_ARGS[@]}" "$JTSR_IMAGE" "${SCAN_ARGS[@]}" --plan-only
+  if [[ "$JTSR_VERIFY_PLAN_ONLY" == 1 ]]; then
+    printf 'java-tron-security-review: verification preflight only; no model invocation\n'
+    exit 0
+  fi
+fi
 
 printf 'java-tron-security-review: scanning %s at %s into %s\n' \
   "$JTSR_TARGET_REF" "$TARGET_SHA" "$RUN_DIR"
@@ -276,10 +318,15 @@ STATUS_TMP="$JTSR_OUTPUT_ROOT/.last-run.json.$$"
 printf '{"completed_at":"%s","exit_code":%d,"run_id":"%s","target_revision":"%s"}\n' \
   "$COMPLETED_AT" "$SCAN_EXIT" "$RUN_ID" "$TARGET_SHA" > "$STATUS_TMP"
 chmod 0600 "$STATUS_TMP"
-mv -f "$STATUS_TMP" "$JTSR_OUTPUT_ROOT/last-run.json"
-ln -sfn "$RUN_ID" "$JTSR_OUTPUT_ROOT/latest"
-if [[ "$SCAN_EXIT" -eq 0 ]]; then
-  ln -sfn "$RUN_ID" "$JTSR_OUTPUT_ROOT/latest-successful"
+if [[ -n "$JTSR_VERIFY_SOURCE_RUN" ]]; then
+  mv -f "$STATUS_TMP" "$JTSR_OUTPUT_ROOT/last-verification.json"
+  ln -sfn "$RUN_ID" "$JTSR_OUTPUT_ROOT/latest-verification"
+else
+  mv -f "$STATUS_TMP" "$JTSR_OUTPUT_ROOT/last-run.json"
+  ln -sfn "$RUN_ID" "$JTSR_OUTPUT_ROOT/latest"
+  if [[ "$SCAN_EXIT" -eq 0 ]]; then
+    ln -sfn "$RUN_ID" "$JTSR_OUTPUT_ROOT/latest-successful"
+  fi
 fi
 
 if [[ "$SCAN_EXIT" -eq 2 ]]; then

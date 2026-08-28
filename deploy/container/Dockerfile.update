@@ -1,0 +1,9 @@
+# Offline application-only update. Supply a locally verified scanner image digest.
+# Dependency upgrades must use the full Dockerfile and its pinned package lock.
+ARG JTSR_BASE_IMAGE
+FROM ${JTSR_BASE_IMAGE}
+COPY src /opt/jtsr/src
+COPY config /opt/jtsr/config
+COPY knowledge /opt/jtsr/knowledge
+COPY prompts /opt/jtsr/prompts
+RUN jtsr --version

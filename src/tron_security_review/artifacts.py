@@ -4,15 +4,23 @@ from collections import defaultdict
 from hashlib import sha256
 import json
 from pathlib import Path
+import os
+import tempfile
 from typing import Any, Iterable
 
 
 def write_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
-        json.dumps(value, indent=2, sort_keys=True, ensure_ascii=False) + "\n",
-        encoding="utf-8",
-    )
+    # Readers (including the portal) must never see a half-written progress record.
+    fd, temporary = tempfile.mkstemp(prefix=".jtsr-", dir=path.parent)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as stream:
+            json.dump(value, stream, indent=2, sort_keys=True, ensure_ascii=False)
+            stream.write("\n")
+        os.replace(temporary, path)
+    finally:
+        if os.path.exists(temporary):
+            os.unlink(temporary)
 
 
 def finding_list(document: Any) -> list[dict[str, Any]]:
@@ -40,7 +48,7 @@ def _first(item: dict[str, Any], *keys: str) -> Any:
 
 
 def finding_fingerprint(item: dict[str, Any]) -> str:
-    native = _first(item, "fingerprint", "finding_id", "findingId", "id")
+    native = _first(item, "fingerprint", "finding_id", "findingId", "id", "candidateId")
     if native:
         return f"native:{native}"
     basis = {

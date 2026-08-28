@@ -20,6 +20,7 @@ from urllib.parse import parse_qs, unquote, urlsplit
 import zipfile
 
 from .artifacts import finding_fingerprint, finding_list
+from .verification import deferred_candidate, exclusion_reason
 
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,159}\Z")
 FILE_LIMIT = 8 * 1024 * 1024
@@ -50,6 +51,8 @@ def allowed_artifact(path: str) -> bool:
         return parts[1] == "candidates" and parts[4] == "results.sarif"
     if len(parts) == 6:
         return parts[1] == "candidates" and parts[4] == "results" and parts[5] in RESULT_FILES
+    if len(parts) == 7:
+        return parts[1] == "candidates" and parts[4:] == ["results", "artifacts", "jtsr-verdict.json"]
     return False
 
 
@@ -134,7 +137,7 @@ class ReportStore:
                         if entry.is_file(follow_symlinks=False) and allowed_artifact(path):
                             size = entry.stat(follow_symlinks=False).st_size
                             found.append({"path": path, "size": size, "available": size <= FILE_LIMIT})
-                        elif entry.is_dir(follow_symlinks=False) and len(child) < 6:
+                        elif entry.is_dir(follow_symlinks=False) and len(child) < 7:
                             if len(child) == 1 and not _job(entry.name):
                                 continue
                             if len(child) == 2 and entry.name not in {"results", "candidates"}:
@@ -205,6 +208,8 @@ class ReportStore:
         count = aggregate.get("finding_group_count")
         return {"id": run_id, "status": status, "created_at": manifest.get("created_at"),
                 "completed_at": manifest.get("completed_at"),
+                "execution_kind": manifest.get("execution_kind", "scan"),
+                "source_run_id": manifest.get("source_run_id"),
                 "finding_count": count if isinstance(count, int) and count >= 0 else None,
                 "estimated_cost": round(cost, 6) if has_cost else None,
                 "models": sorted(models), "mode": plan.get("run_mode") or plan.get("mode"),
@@ -216,7 +221,16 @@ class ReportStore:
         summary = self.summary(run_id)
         coverages = []
         deferred = []
+        verification = []
         for item in artifacts:
+            if item["path"].endswith("/verification-manifest.json"):
+                document = self.document(run_id, item["path"])
+                if not isinstance(document, dict):
+                    summary["warnings"].append("复核清单无法解析: " + item["path"])
+                else:
+                    document["candidates"] = [record for record in _list(document.get("candidates")) if isinstance(record, dict)]
+                    document["intake_errors"] = _list(document.get("intake_errors"))
+                    verification.append({"path": item["path"], "document": document})
             if item["path"].endswith("/coverage.json"):
                 document = self.document(run_id, item["path"])
                 if not isinstance(document, dict):
@@ -225,8 +239,12 @@ class ReportStore:
                         summary["status"] = "unknown"
                     continue
                 coverages.append({"path": item["path"], "document": document})
-                deferred.extend({"source": item["path"], "item": value}
-                                for value in _list(document.get("deferred")))
+                for value in _list(document.get("deferred")):
+                    reason = exclusion_reason(value)
+                    candidate = deferred_candidate(value)
+                    deferred.append({"source": item["path"], "item": value,
+                                     "source_fingerprint": finding_fingerprint(candidate) if candidate else None,
+                                     "review_status": "blocked" if reason == "safety_blocked" else "not_candidate" if reason or not candidate else "not_reviewed"})
                 if document.get("completeness") == "partial" and summary["status"] == "completed":
                     summary["status"] = "partial"
         if not coverages and summary["status"] == "completed":
@@ -235,8 +253,21 @@ class ReportStore:
         try:
             revision = self.read(run_id, "target-revision.txt").decode("utf-8").strip()
         except (OSError, ValueError):
-            revision = None
+            revision = _dict(self.document(run_id, "run-manifest.json")).get("target_revision")
         groups = []
+        review_index = {}
+        for item in verification:
+            for record in _list(item["document"].get("candidates")):
+                record = _dict(record)
+                fingerprint = record.get("source_fingerprint")
+                if isinstance(fingerprint, str):
+                    for source in _list(record.get("source_artifacts")):
+                        if isinstance(source, str):
+                            review_index[(source, fingerprint)] = record
+        for entry in deferred:
+            review = review_index.get((entry["source"], entry["source_fingerprint"]))
+            if review:
+                entry.update(review_status=review.get("status", "not_reviewed"), review=review)
         # Resolve details from enumerated, allowlisted report files only. Never open
         # the model-controlled absolute `source` paths stored in the aggregate.
         finding_index = {}
@@ -261,15 +292,25 @@ class ReportStore:
                                    if source == path or source.endswith("/" + run_id + "/" + path)]
                     if len(matches) == 1:
                         occurrence.update(artifact_path=matches[0][0], finding=matches[0][1])
+                        occurrence["review"] = review_index.get((matches[0][0], fingerprint))
                     else:
                         occurrence.update(artifact_path=None, finding=None,
                                           detail_warning="未能唯一匹配原始发现文件；请查看原始报告")
                     occurrences.append(occurrence)
                 groups.append({**group, "profiles": _list(group.get("profiles")),
                                "occurrences": occurrences})
+        # Resolve follow-ups only through allowlisted manifests and matching revisions.
+        followups = []
+        for other in self.run_ids():
+            if other == run_id:
+                continue
+            metadata = _dict(self.document(other, "run-manifest.json"))
+            if metadata.get("execution_kind") == "verification_only" and metadata.get("source_run_id") == run_id and revision and metadata.get("target_revision") == revision:
+                followups.append({"id": other, "completed_at": metadata.get("completed_at")})
         return {**summary, "revision": revision, "artifacts": artifacts,
                 "finding_groups": groups,
-                "coverage": coverages, "deferred": deferred}
+                "coverage": coverages, "deferred": deferred,
+                "verification": verification, "followups": followups}
 
     def archive(self, run_id: str) -> bytes:
         output = io.BytesIO()

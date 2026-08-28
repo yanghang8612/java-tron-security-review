@@ -83,3 +83,27 @@ test("deep objects stop rendering safely while preserving original JSON", () => 
   const raw = descendants(parent).find(n => n.className === "raw-data");
   assert.deepEqual(JSON.parse(raw.children[1].textContent), data);
 });
+
+test("review distinguishes not reviewed, evidence gaps, rejection and support", () => {
+  for (const status of ["pending", "running", "supported", "rejected", "insufficient_evidence", "failed", "blocked", "skipped"]) {
+    const card = view.verification({candidate: {title: "Example"}, status}, 1);
+    assert.ok(card.textContent.includes(view.reviewStatuses[status]));
+    assert.ok(!card.textContent.includes("已确认漏洞"));
+  }
+});
+
+test("review outcome and missing evidence are readable without expanding JSON", () => {
+  const card = view.verification({candidate: {title: "Example"}, status: "insufficient_evidence",
+    verdict: {rationale: "Source guard checked", missing_evidence: ["Current activation value"], evidence: ["Example.java:12"], production_reachability: {status: "unverified", evidence: []}},
+    primary: {model: "example-model", effort: "high"}, effective_attempt: "primary"}, 1);
+  assert.match(card.textContent, /独立复核结论/);
+  assert.match(card.textContent, /Current activation value/);
+  assert.match(card.textContent, /example-model/);
+  assert.notEqual(descendants(card).find(n => n.className === "raw-data").open, true);
+});
+
+test("malicious review status and verdict stay plain text", () => {
+  const payload = '<script>alert(1)</script>';
+  const card = view.verification({status: payload, verdict: {rationale: payload, missing_evidence: [payload]}, candidate: {title: "Example"}}, 1);
+  assert.ok(descendants(card).every(n => n.tagName !== "script" && !n.className.includes(payload)));
+});

@@ -183,6 +183,46 @@ class ReportStoreTests(unittest.TestCase):
         occurrence = self.store.detail(RUN)["finding_groups"][0]["occurrences"][0]
         self.assertIsNone(occurrence["finding"])
 
+    def test_verification_status_attaches_by_exact_source_and_candidate(self):
+        self.write(COVERAGE, {"completeness": "partial", "deferred": [
+            {"id": "deferred-1", "candidate": {"candidateId": "example-1", "title": "Example", "summary": "Synthetic claim"}}]})
+        path = self.run / "verifier-tvm/verification-manifest.json"
+        path.parent.mkdir()
+        record = {"source_fingerprint": "native:example-1", "source_artifacts": [COVERAGE],
+                  "status": "insufficient_evidence", "candidate": {"title": "Example"}}
+        path.write_text(json.dumps({"candidates": [record]}))
+        detail = self.store.detail(RUN)
+        self.assertEqual(detail["deferred"][0]["review_status"], "insufficient_evidence")
+        self.assertEqual(len(detail["verification"]), 1)
+        self.assertEqual(detail["status"], "partial")
+        record["source_artifacts"] = ["some-other/coverage.json"]
+        path.write_text(json.dumps({"candidates": [record]}))
+        self.assertEqual(self.store.detail(RUN)["deferred"][0]["review_status"], "not_reviewed")
+
+    def test_followup_links_require_same_source_and_revision(self):
+        followup = self.scans / "20260828T010000Z-verify-example"
+        followup.mkdir()
+        metadata = {"execution_kind": "verification_only", "source_run_id": RUN, "target_revision": "a" * 40}
+        (followup / "run-manifest.json").write_text(json.dumps(metadata))
+        self.assertEqual(self.store.detail(RUN)["followups"][0]["id"], followup.name)
+        metadata["target_revision"] = "b" * 40
+        (followup / "run-manifest.json").write_text(json.dumps(metadata))
+        self.assertFalse(self.store.detail(RUN)["followups"])
+
+    def test_only_named_supplemental_verdict_can_be_downloaded(self):
+        path = "verifier-tvm/candidates/001-test/model/results/artifacts/jtsr-verdict.json"
+        self.assertTrue(allowed_artifact(path))
+        self.assertFalse(allowed_artifact(path.replace("jtsr-verdict.json", "auth.json")))
+        (self.run / path).parent.mkdir(parents=True)
+        self.write(path, {"status": "insufficient_evidence"})
+        self.assertIn(path, [artifact["path"] for artifact in self.store.artifacts(RUN)])
+
+    def test_malformed_verification_queue_does_not_break_detail(self):
+        path = self.run / "verifier-tvm/verification-manifest.json"
+        path.parent.mkdir()
+        path.write_text(json.dumps({"candidates": "bad", "intake_errors": False}))
+        self.assertEqual(self.store.detail(RUN)["verification"][0]["document"]["candidates"], [])
+
 
 class ReportHTTPTests(ReportStoreTests):
     def setUp(self):

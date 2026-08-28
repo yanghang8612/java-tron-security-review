@@ -26,6 +26,7 @@ const ReportView = (() => {
     hypothesis: "问题假设", attackpath: "触发路径", callchain: "调用链", notes: "备注"
   };
   const severities = {critical: "严重", high: "高", medium: "中", low: "低", informational: "提示", info: "提示", none: "无", unknown: "待评估"};
+  const reviewStatuses = {not_reviewed: "未复核", pending: "等待复核", running: "正在复核", supported: "复核支持 · 仍需人工确认", rejected: "复核排除 · 模型结论", insufficient_evidence: "已复核 · 证据不足", failed: "复核失败", blocked: "安全限制 · 未重试", skipped: "超出本轮上限 · 未复核", not_candidate: "覆盖记录 · 非复核候选"};
   const own = (obj, key) => Object.prototype.hasOwnProperty.call(obj, key);
   const object = (value) => value !== null && typeof value === "object" && !Array.isArray(value) ? value : {};
   const present = (value) => value !== undefined && value !== null && value !== "" && !(Array.isArray(value) && !value.length) && !(typeof value === "object" && !Object.keys(value).length);
@@ -139,7 +140,10 @@ const ReportView = (() => {
     if (model.hasSeverity) badges.append(node("span", model.severityBasis + "：" + model.severityLabel, "severity severity-" + model.severity));
     if (options.profile) badges.append(node("span", options.profile, "profile-tag"));
     if (model.id) badges.append(node("span", model.id, "finding-id"));
+    const status = own(reviewStatuses, options.reviewStatus) ? options.reviewStatus : "not_reviewed";
+    if (options.reviewStatus) badges.append(node("span", reviewStatuses[status], "review-status review-" + status));
     article.append(badges);
+    if (options.review) reviewDetails(article, options.review);
     if (options.reason) block(article, "为何仍待验证", options.reason, "review-gap");
     if (options.warning) article.append(node("p", options.warning, "error"));
     block(article, "问题概述", model.overview);
@@ -155,13 +159,34 @@ const ReportView = (() => {
     raw(article, options.raw === undefined ? input : options.raw);
     return article;
   }
+  function reviewDetails(parent, record) {
+    const verdict = object(record.verdict);
+    const reasons = {missing_invalid_or_conflicting_explicit_verdict: "复核没有返回可核验的明确结论，不能按未发现问题判定排除。", review_attempt_failed_or_interrupted: "复核执行失败或中断，已保留其他候选结果。", review_turn_not_completed: "复核未正常完成。", safety_blocked: "触发安全限制，未通过更换模型重试。"};
+    block(parent, "独立复核结论", first(verdict.rationale, reasons[record.reason], record.reason));
+    block(parent, "仍缺少的证据", verdict.missing_evidence, "review-gap");
+    if (present(verdict.evidence) || present(verdict.production_reachability)) {
+      const details = node("details", null, "finding-analysis"); details.append(node("summary", "复核证据与生产可达性"));
+      block(details, "复核证据", verdict.evidence);
+      const reachability = object(verdict.production_reachability);
+      block(details, "生产可达性", {status: {proven: "模型提供了可达性证据", not_reachable: "模型判断不可达", unverified: "尚未证明"}[reachability.status] || "未记录", evidence: reachability.evidence});
+      parent.append(details);
+    }
+    const attempt = object(record[record.effective_attempt || "primary"]);
+    if (attempt.model) parent.append(node("p", "复核模型：" + attempt.model + " · " + (attempt.effort || "未记录") + (record.effective_attempt === "fallback" ? " · 可用性故障后降级" : ""), "finding-source"));
+  }
+  function verification(record, index) {
+    return card(record.candidate || {}, {kind: "deferred", index, paths: record.paths || record.source_paths,
+      reviewStatus: record.status || "not_reviewed", review: record,
+      reason: record.deferral_reason, source: record.source_artifact, raw: record});
+  }
   function deferred(entry, index) {
     const item = object(entry.item), candidate = object(item.candidate);
     return card(Object.keys(candidate).length ? candidate : item, {
       kind: "deferred", index, id: first(item.id, item.candidateId),
       title: first(item.title, item.id, item.candidateId), paths: item.paths,
       metadata: Object.keys(candidate).length ? Object.fromEntries(Object.entries(item).filter(([key]) => !["candidate", "id", "candidateId", "title", "reason", "paths"].includes(key))) : null,
-      reason: first(item.reason, typeof entry.item === "string" ? entry.item : null), source: entry.source, raw: entry.item
+      reason: first(item.reason, typeof entry.item === "string" ? entry.item : null), source: entry.source, raw: entry.item,
+      reviewStatus: entry.review_status || "not_reviewed", review: entry.review
     });
   }
   function group(group, index, downloadUrl) {
@@ -171,6 +196,7 @@ const ReportView = (() => {
       const article = card(occurrence.finding || occurrence, {
         index: i ? undefined : index, title: occurrence.title, id: occurrence.native_id,
         profile: occurrence.profile, source: occurrence.artifact_path || occurrence.source,
+        reviewStatus: occurrence.review?.status, review: occurrence.review,
         warning: occurrence.detail_warning, downloadUrl: occurrence.artifact_path ? downloadUrl(occurrence.artifact_path) : null
       });
       if (group.corroborated_by_multiple_profiles) article.append(node("p", "多个审查配置提供了佐证；不代表已经独立验证或人工确认。", "corroboration-note"));
@@ -198,6 +224,6 @@ const ReportView = (() => {
       raw(parent, data, "完整文件 JSON（包含元数据）");
     } else structured(parent, data);
   }
-  return {normalize, value, raw, card, deferred, group, structured, artifact};
+  return {normalize, value, raw, card, deferred, group, structured, artifact, verification, reviewStatuses};
 })();
 if (typeof module !== "undefined" && module.exports) module.exports = ReportView;

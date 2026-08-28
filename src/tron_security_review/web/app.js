@@ -34,7 +34,7 @@ async function loadRuns() {
     for (const run of runs) {
       const row = el("button", null, "run-row" + (selected === run.id ? " selected" : ""));
       row.type = "button"; row.setAttribute("aria-label", "查看运行 " + run.id);
-      const title = el("div"); title.append(el("div", date(run.created_at), "run-title"), el("div", run.id, "run-id"));
+      const title = el("div"); title.append(el("div", (run.execution_kind === "verification_only" ? "补充复核 · " : "") + date(run.created_at), "run-title"), el("div", run.id, "run-id"));
       row.append(title, badge(run.status), el("span", run.models.join(" · ") || "模型待记录", "run-model"), el("span", (run.finding_count ?? "?") + " 发现", "metric"), el("span", money(run.estimated_cost), "metric"));
       row.addEventListener("click", () => {for (const child of list.children) child.classList.remove("selected"); row.classList.add("selected"); loadDetail(run.id);}); list.append(row);
     }
@@ -65,10 +65,24 @@ async function loadDetail(id) {
     const meta = el("div", null, "metadata");
     for (const [key, value] of [["扫描范围", data.scopes.join(" · ") || "见报告"], ["目标版本", data.revision || "未记录"], ["开始 / 完成", date(data.created_at) + " → " + date(data.completed_at)], ["模型 / 估算用量", data.models.join(" · ") + " / " + money(data.estimated_cost)]]) {const item = el("div"); item.append(el("span", key), document.createTextNode(value)); meta.append(item);} panel.append(meta);
     for (const warning of data.warnings) panel.append(el("p", warning, "error"));
+    const links = el("div", null, "actions");
+    if (data.source_run_id) {const link = el("button", "查看原始扫描"); link.addEventListener("click", () => loadDetail(data.source_run_id)); links.append(link);}
+    for (const followup of data.followups || []) {const link = el("button", "查看补充复核 · " + followup.id); link.addEventListener("click", () => loadDetail(followup.id)); links.append(link);}
+    if (links.children.length) panel.append(links);
+    if (data.execution_kind === "verification_only") panel.append(el("p", "本次仅复核原扫描的已有候选，不代表重新完成全部范围扫描；原报告与覆盖缺口保留不变。", "notice"));
     const filter = el("div", null, "finding-filter"), searchLabel = el("label", "筛选发现与线索"), search = el("input"), count = el("span", "", "small muted");
     search.id = "finding-search"; search.type = "search"; search.placeholder = "搜索标题、文件、证据或编号"; searchLabel.htmlFor = search.id;
     count.setAttribute("role", "status"); filter.append(searchLabel, search, count); panel.append(filter);
     const searchable = [];
+    for (const queue of data.verification || []) {
+      const records = queue.document.candidates || [];
+      const reviews = section(panel, "逐条独立复核 · " + records.length);
+      const counts = {}; for (const record of records) counts[record.status || "not_reviewed"] = (counts[record.status || "not_reviewed"] || 0) + 1;
+      reviews.append(el("p", Object.entries(counts).map(([status, count]) => (ReportView.reviewStatuses[status] || "记录待核验") + " " + count).join(" / ") || "本轮没有进入复核队列的候选", "muted"));
+      if (queue.document.error) reviews.append(el("p", queue.document.error, "error"));
+      for (const error of queue.document.intake_errors || []) reviews.append(el("p", error, "error"));
+      records.forEach((record, index) => {const card = ReportView.verification(record, index + 1); reviews.append(card); searchable.push([card, JSON.stringify(record).toLowerCase()]);});
+    }
     const findings = section(panel, "发现 · " + (data.finding_count ?? "未知"));
     data.finding_groups.forEach((group, index) => {const card = ReportView.group(group, index + 1, path => download(id, path)); findings.append(card); searchable.push([card, JSON.stringify(group).toLowerCase()]);});
     if (!data.finding_groups.length) findings.append(el("div", data.finding_count === 0 ? "本次尚无正式发现。请继续查看覆盖缺口与待验证线索，这不代表已证明安全。" : "没有可读取的发现汇总，不能据此判断风险。", "empty"));

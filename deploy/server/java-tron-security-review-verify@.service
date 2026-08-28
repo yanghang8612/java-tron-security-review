@@ -1,0 +1,22 @@
+[Unit]
+Description=Independent verification of saved java-tron security candidates (%i)
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/etc/java-tron-security-review/jtsr.env
+Environment=JTSR_VERIFY_SOURCE_RUN=%i
+ExecStart=/usr/local/libexec/java-tron-security-review/run-daily-tvm
+UMask=0077
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+TimeoutStartSec=12h
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full

@@ -16,11 +16,11 @@ from typing import Any, Iterable
 from .artifacts import (
     aggregate_run,
     finding_fingerprint,
-    read_findings,
     write_json,
 )
 from .config import AppConfig, available_knowledge_bases
 from .planner import PlanJob, ScanPlan, existing_scope_paths
+from .verification import SAFETY_MARKERS, collect_candidates, review_outcome
 
 
 @dataclass(frozen=True)
@@ -313,16 +313,7 @@ def _run_command(
 
 
 _COST_PATTERN = re.compile(r"Estimated cost:\s*\$([0-9]+(?:\.[0-9]+)?)", re.I)
-_CYBER_SAFETY_MARKERS = (
-    "flagged for possible cyber-security risk",
-    "trusted access for cyber",
-    "safety policy",
-    "safety_policy",
-    "content_policy_violation",
-    "content_filter",
-    "safety refusal",
-    "request refused",
-)
+_CYBER_SAFETY_MARKERS = SAFETY_MARKERS
 _CANDIDATE_FIELDS = (
     "id",
     "finding_id",
@@ -347,8 +338,19 @@ _CANDIDATE_FIELDS = (
     "attacker_prerequisites",
     "prerequisites",
     "affected_component",
+    "candidateId",
+    "identity",
+    "preliminaryAssessments",
+    "preliminaryAssessment",
+    "attacker",
+    "violatedInvariant",
+    "counterEvidence",
+    "sourceLocations",
+    "remediation",
+    "paths",
+    "deferral_reason",
 )
-_PATH_KEYS = {"path", "file", "filename", "uri", "location", "locations"}
+_PATH_KEYS = {"path", "paths", "file", "filepath", "filename", "uri", "location", "locations", "sourcelocations", "source_locations"}
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 
 
@@ -393,14 +395,16 @@ def _fallback_reason(stderr_path: Path) -> str | None:
     return None
 
 
-def _bounded_candidate_value(value: Any) -> Any:
+def _bounded_candidate_value(value: Any, depth: int = 0) -> Any:
+    if depth > 10:
+        return "[nested candidate data omitted]"
     if isinstance(value, str):
         return value[:4000]
     if isinstance(value, list):
-        return [_bounded_candidate_value(item) for item in value[:20]]
+        return [_bounded_candidate_value(item, depth + 1) for item in value[:20]]
     if isinstance(value, dict):
         return {
-            str(key): _bounded_candidate_value(item)
+            str(key): _bounded_candidate_value(item, depth + 1)
             for key, item in list(value.items())[:30]
         }
     if isinstance(value, (int, float, bool)) or value is None:
@@ -485,11 +489,12 @@ def _render_candidate_prompt(
     plan: ScanPlan,
     candidate: dict[str, Any],
     destination: Path,
+    source_fingerprint: str | None = None,
 ) -> Path:
     base = job.profile.prompt.read_text(encoding="utf-8").rstrip()
-    payload = json.dumps(
-        _candidate_payload(candidate), indent=2, sort_keys=True, ensure_ascii=False
-    )
+    fingerprint = source_fingerprint or finding_fingerprint(candidate)
+    payload = json.dumps({**_candidate_payload(candidate), "source_fingerprint": fingerprint},
+                         indent=2, sort_keys=True, ensure_ascii=False)
     rendered = (
         base
         + "\n\n## Orchestrator-provided single-candidate review\n\n"
@@ -500,6 +505,35 @@ def _render_candidate_prompt(
         + "weaponized payloads, exploitation procedures, persistence, or evasion guidance.\n\n"
         + f"Run mode: `{plan.run_mode}`\n\n"
         + f"Candidate data:\n```json\n{payload}\n```\n"
+        + "\n## Required explicit review outcome\n\n"
+        + "Keep discovery scoped to this one hypothesis. Distinguish missing evidence from "
+        + "evidence that disproves the claim. Missing deployment/proposal state alone means "
+        + "insufficient_evidence, not rejected. Do not assume all legacy branches are exploitable. "
+        + "No live-chain calls or changes, no source changes, and no unrelated scan.\n\n"
+        + "At completion, write a supplemental JSON artifact at artifacts/jtsr-verdict.json "
+        + "inside this scan's output directory, using the schema below. Include the identical "
+        + "JSON in a jtsr-verdict fenced block in your final response as well. Do not edit "
+        + "sealed/SDK-owned findings or coverage to manufacture a disposition. This artifact "
+        + "is an independent model assessment, never human confirmation.\n\n"
+        + "Set status to supported only with concrete code evidence, security impact and "
+        + "proven current-production reachability; rejected only with a concrete guard, "
+        + "counterexample or activated fix that disproves this hypothesis; otherwise "
+        + "insufficient_evidence. Cite file:line anchors in evidence. State the exact missing "
+        + "release, activation, endpoint, runtime or impact evidence in missing_evidence. "
+        + "Do not invent observations or treat the supplied candidate as proof.\n\n"
+        + "```json\n"
+        + json.dumps({
+            "schema_version": 1,
+            "source_fingerprint": fingerprint,
+            "status": "insufficient_evidence",
+            "rationale": "Explain the independently checked conclusion, not just the source claim.",
+            "evidence": [],
+            "production_reachability": {"status": "unverified", "evidence": []},
+            "missing_evidence": [],
+        }, indent=2)
+        + "\n```\nReachability status must be proven, not_reachable, or unverified. "
+        + "A supported verdict requires nonempty reachability evidence and no material "
+        + "missing_evidence. A rejected verdict must cite explicit counter-evidence.\n"
     )
     destination.write_text(rendered, encoding="utf-8")
     return destination
@@ -636,6 +670,7 @@ def _run_per_finding_job(
     dry_run: bool,
     provider_override: str | None,
     model_override: str | None,
+    source_run_dir: Path | None = None,
 ) -> tuple[list[InvocationResult], bool]:
     job_dir = run_dir / job.id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -643,7 +678,7 @@ def _run_per_finding_job(
     profile = job.profile
     source_job = _source_job_for(plan, job)
     manifest: dict[str, Any] = {
-        "schema_version": 1,
+        "schema_version": 2,
         "job_id": job.id,
         "strategy": "per-finding",
         "source_profile": profile.candidate_source_profile,
@@ -657,7 +692,7 @@ def _run_per_finding_job(
         "max_candidates": profile.max_candidates,
         "candidates": [],
     }
-    if dry_run:
+    if dry_run and source_run_dir is None:
         manifest["deferred_until_source_scan"] = True
         write_json(manifest_path, manifest)
         return [], False
@@ -666,25 +701,33 @@ def _run_per_finding_job(
         write_json(manifest_path, manifest)
         return [], True
 
-    source_path = run_dir / source_job.id / "results" / "findings.json"
+    source_root = source_run_dir or run_dir
+    source_path = source_root / source_job.id / "results" / "findings.json"
     manifest["source_artifact"] = str(source_path)
-    if not source_path.is_file():
-        manifest["error"] = "candidate source findings are unavailable"
-        write_json(manifest_path, manifest)
-        return [], True
-
-    try:
-        candidates = sorted(read_findings(source_path), key=_candidate_sort_key)
-    except (OSError, json.JSONDecodeError):
-        manifest["error"] = "candidate source findings are unreadable"
+    intake = collect_candidates(source_root, source_job.id)
+    manifest["intake_errors"] = intake["errors"]
+    manifest["excluded"] = intake["excluded"]
+    candidates = intake["candidates"]
+    if _cyber_safety_blocked(source_root / source_job.id / "invocation.stderr.log"):
+        manifest["error"] = "source scan was safety-blocked; do not retry through verification"
+        manifest["status"] = "blocked"
         write_json(manifest_path, manifest)
         return [], True
     max_candidates = profile.max_candidates or 0
-    selected = candidates[:max_candidates]
-    skipped_count = max(0, len(candidates) - len(selected))
+    selected_count = min(len(candidates), max_candidates)
+    skipped_count = len(candidates) - selected_count
     manifest["candidate_count"] = len(candidates)
-    manifest["selected_candidate_count"] = len(selected)
+    manifest["selected_candidate_count"] = selected_count
     manifest["skipped_candidate_count"] = skipped_count
+    for index, entry in enumerate(candidates, start=1):
+        manifest["candidates"].append({
+            **entry, "candidate": _bounded_candidate_value(entry["candidate"]),
+            "index": index, "status": "pending" if index <= selected_count else "skipped",
+        })
+    manifest["status"] = "planned" if dry_run else "running"
+    write_json(manifest_path, manifest)
+    if dry_run:
+        return [], bool(skipped_count or intake["errors"])
 
     attempts: list[InvocationResult] = []
     effective_provider = provider_override or profile.provider
@@ -695,15 +738,22 @@ def _run_per_finding_job(
     )
     fallback_count = 0
     primary_model = model_override or profile.model
-    for index, candidate in enumerate(selected, start=1):
-        fingerprint = finding_fingerprint(candidate)
+    for candidate_record in manifest["candidates"][:selected_count]:
+        index = candidate_record["index"]
+        candidate = dict(candidate_record["candidate"])
+        candidate["deferral_reason"] = candidate_record["deferral_reason"]
+        candidate.setdefault("paths", candidate_record["source_paths"])
+        fingerprint = candidate_record["source_fingerprint"]
         candidate_token = sha256(fingerprint.encode("utf-8")).hexdigest()[:12]
         candidate_dir = job_dir / "candidates" / f"{index:03d}-{candidate_token}"
         candidate_dir.mkdir(parents=True, exist_ok=True)
         prompt_path = _render_candidate_prompt(
-            job, plan, candidate, candidate_dir / "candidate-context.md"
+            job, plan, candidate, candidate_dir / "candidate-context.md", fingerprint
         )
         candidate_paths = _candidate_paths(candidate, target, job.paths)
+        candidate_record.update(status="running", paths=list(candidate_paths),
+                                started_at=datetime.now(timezone.utc).isoformat())
+        write_json(manifest_path, manifest)
         primary_dir = candidate_dir / _attempt_directory_name(primary_model)
         primary = _invoke_scan(
             config=config,
@@ -726,12 +776,8 @@ def _run_per_finding_job(
             timeout_seconds=(profile.per_finding_timeout_minutes or 0) * 60,
             job_id=f"{job.id}/candidate-{index:03d}/primary",
         )
-        candidate_record: dict[str, Any] = {
-            "index": index,
-            "source_fingerprint": fingerprint,
-            "paths": list(candidate_paths),
-            "primary": asdict(primary),
-        }
+        candidate_record["primary"] = asdict(primary)
+        effective = primary
 
         fallback_reason = (
             _fallback_reason(Path(primary.stderr_path))
@@ -742,6 +788,9 @@ def _run_per_finding_job(
         can_fallback = fallback_allowed and fallback_count < (profile.max_fallbacks or 0)
         if fallback_reason and can_fallback:
             fallback_count += 1
+            candidate_record["effective_attempt"] = "fallback"
+            manifest["fallback_count"] = fallback_count
+            write_json(manifest_path, manifest)
             fallback_model = profile.fallback_model or ""
             fallback_dir = candidate_dir / _attempt_directory_name(fallback_model)
             fallback = _invoke_scan(
@@ -770,6 +819,7 @@ def _run_per_finding_job(
             candidate_record["primary"] = asdict(primary)
             candidate_record["fallback"] = asdict(fallback)
             candidate_record["effective_attempt"] = "fallback"
+            effective = fallback
             attempts.extend((primary, fallback))
         else:
             candidate_record["effective_attempt"] = "primary"
@@ -777,11 +827,16 @@ def _run_per_finding_job(
                 primary.safety_blocked or (fallback_reason and not can_fallback)
             )
             attempts.append(primary)
-        manifest["candidates"].append(candidate_record)
+        candidate_record.update(review_outcome(effective, fingerprint))
+        candidate_record["completed_at"] = datetime.now(timezone.utc).isoformat()
+        write_json(manifest_path, manifest)
 
     manifest["fallback_count"] = fallback_count
+    manifest["status"] = "completed"
     write_json(manifest_path, manifest)
-    return attempts, skipped_count > 0
+    unresolved = any(entry["status"] not in {"supported", "rejected"} for entry in manifest["candidates"])
+    excluded_unresolved = any(item["reason"] in {"operational_record", "safety_blocked"} for item in intake["excluded"])
+    return attempts, bool(skipped_count or intake["errors"] or unresolved or excluded_unresolved)
 
 
 def _has_partial_results(results: Iterable[InvocationResult]) -> bool:
@@ -806,11 +861,24 @@ def run_plan(
     extra_knowledge_bases: tuple[Path, ...] = (),
     provider_override: str | None = None,
     model_override: str | None = None,
+    source_run_dir: Path | None = None,
 ) -> tuple[Path, tuple[InvocationResult, ...]]:
     ensure_output_is_safe(target, output_root)
+    source_manifest = None
+    if source_run_dir:
+        from .reverify import verification_inputs
+        expected_plan, source_revision, source_manifest = verification_inputs(config, target, source_run_dir)
+        if source_revision != head_commit or expected_plan != plan:
+            raise ValueError("verification must use the original target revision and trusted scope plan")
+    if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,159}", run_id):
+        raise ValueError("invalid run id")
     run_dir = output_root.resolve() / run_id
+    if run_dir.is_symlink() or (run_dir / "run-manifest.json").exists():
+        raise ValueError("run already exists; choose a new run id")
+    if source_run_dir and (run_dir == source_run_dir.resolve() or run_dir.is_relative_to(source_run_dir.resolve())):
+        raise ValueError("verification output must not overwrite the source run")
     run_dir.mkdir(parents=True, exist_ok=True)
-    state_dir = output_root.resolve() / ".state"
+    state_dir = (run_dir if source_run_dir else output_root.resolve()) / ".state"
     state_dir.mkdir(parents=True, exist_ok=True)
     providers = (
         set()
@@ -835,9 +903,13 @@ def run_plan(
         "advisory": config.system.advisory,
         "provider_override": provider_override,
         "model_override": model_override,
+        "target_revision": head_commit,
+        "execution_kind": "verification_only" if source_run_dir else "scan",
         "knowledge_bases": [str(path) for path in knowledge_bases],
         "results": [],
     }
+    if source_manifest:
+        initial_manifest["source_run_id"] = source_manifest["run_id"]
     write_json(run_dir / "run-manifest.json", initial_manifest)
 
     results: list[InvocationResult] = []
@@ -859,10 +931,14 @@ def run_plan(
                 dry_run=dry_run,
                 provider_override=provider_override,
                 model_override=model_override,
+                source_run_dir=source_run_dir,
             )
             results.extend(candidate_results)
             partial_coverage = partial_coverage or candidate_partial
             continue
+
+        if source_run_dir:
+            continue  # Recheck saved candidates only; never rediscover/overwrite triage.
 
         job_dir = run_dir / job.id
         job_dir.mkdir(parents=True, exist_ok=True)

@@ -276,7 +276,9 @@ class RunnerTests(unittest.TestCase):
                 self.assertEqual(results[2].timeout_seconds, 1800)
                 self.assertNotIn("--max-cost", fallback_command)
                 self.assertIn("actuator/src/main/java/org/tron/core/vm/VM.java", fallback_command)
-                self.assertFalse(manifest["partial_coverage"])
+                # A successful process with no explicit verdict is not proof of rejection.
+                self.assertTrue(manifest["partial_coverage"])
+                self.assertEqual(verification["candidates"][0]["status"], "insufficient_evidence")
                 self.assertEqual(verification["fallback_count"], 1)
                 self.assertEqual(verification["candidates"][0]["fallback_reason"], "rate_limit")
 

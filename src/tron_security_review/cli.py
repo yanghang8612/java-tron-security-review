@@ -166,6 +166,41 @@ def cmd_summary(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_verify(args: argparse.Namespace) -> int:
+    from .reverify import verification_inputs
+    from .verification import collect_candidates
+    config = load_config(args.root)
+    target = _target(args, config.system.default_target)
+    source = args.source_run.absolute()
+    plan, revision, manifest = verification_inputs(config, target, source)
+    if args.plan_only:
+        queues = []
+        for job in plan.jobs:
+            if job.profile.per_finding:
+                source_job = next(j for j in plan.jobs if j.profile.name == job.profile.candidate_source_profile)
+                intake = collect_candidates(source, source_job.id)
+                queues.append({"job_id": job.id, "candidate_count": len(intake["candidates"]),
+                               "selected_candidate_count": min(len(intake["candidates"]), job.profile.max_candidates),
+                               "sources": [entry["source_kind"] for entry in intake["candidates"]],
+                               "excluded": intake["excluded"], "errors": intake["errors"],
+                               "profile": asdict(job.profile)})
+        print(json.dumps({"execution_kind": "verification_only", "source_run_id": manifest["run_id"],
+                          "target_revision": revision, "queues": queues}, indent=2, default=str))
+        return 0 if all(not queue["errors"] for queue in queues) else 2
+    run_dir, results = run_plan(
+        config=config, plan=plan, target=target,
+        output_root=(args.output_root or config.system.output_root).resolve(),
+        run_id=args.run_id or default_run_id("verify"),
+        auth=args.auth or config.system.default_auth, cli_bin=args.cli_bin,
+        head_commit=revision, dry_run=args.dry_run, source_run_dir=source,
+    )
+    summary = read_scan_summary(run_dir)
+    print(json.dumps({"run_dir": str(run_dir), **summary}, indent=2))
+    if any(result.returncode not in {0, 2} for result in results if result.counts_toward_exit):
+        return 1
+    return 2 if summary.get("partial_coverage") else 0
+
+
 def cmd_serve(args: argparse.Namespace) -> int:
     from .report_web import serve
     return serve(args)
@@ -220,6 +255,17 @@ def build_parser() -> argparse.ArgumentParser:
     scan.add_argument("--knowledge-base", type=_path, action="append")
     scan.add_argument("--dry-run", action="store_true")
     scan.set_defaults(handler=cmd_scan)
+
+    verify = subparsers.add_parser("verify", help="recheck saved candidates without rerunning discovery")
+    verify.add_argument("--source-run", required=True, type=_path)
+    verify.add_argument("--target", type=_path)
+    verify.add_argument("--output-root", type=_path)
+    verify.add_argument("--run-id")
+    verify.add_argument("--auth", choices=["auto", "chatgpt", "api-key"])
+    verify.add_argument("--cli-bin", type=_path)
+    verify.add_argument("--plan-only", action="store_true", help="inspect candidate counts and limits without invoking a model")
+    verify.add_argument("--dry-run", action="store_true")
+    verify.set_defaults(handler=cmd_verify)
 
     summary = subparsers.add_parser("summary", help="summarize a completed run directory")
     summary.add_argument("run_dir", type=_path)
