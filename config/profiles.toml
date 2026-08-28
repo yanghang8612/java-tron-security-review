@@ -1,12 +1,12 @@
 [profiles.triage]
-description = "Fast evidence-oriented review for every changed surface"
+description = "High-reasoning discovery across each scoped execution flow"
 provider = "openai"
-model = "gpt-5.6-terra"
-effort = "high"
+model = "gpt-5.6-sol"
+effort = "xhigh"
 scan_mode = "standard"
 modes = ["pr", "daily-tvm"]
 minimum_risk = "low"
-max_cost = 8.0
+max_cost = 200.0
 prompt = "prompts/scan.md"
 
 [profiles.primary]
@@ -24,7 +24,7 @@ prompt = "prompts/scan.md"
 description = "Independent falsification pass for high-risk changes"
 provider = "openai"
 model = "gpt-5.6-sol"
-effort = "max"
+effort = "high"
 scan_mode = "standard"
 modes = ["pr", "daily-tvm", "nightly"]
 minimum_risk = "high"
@@ -36,7 +36,7 @@ max_candidates = 8
 per_finding_max_cost = 30.0
 per_finding_timeout_minutes = 60.0
 fallback_model = "gpt-5.5"
-fallback_effort = "xhigh"
+fallback_effort = "high"
 max_fallbacks = 3
 fallback_timeout_minutes = 30.0
 

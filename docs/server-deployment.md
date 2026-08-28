@@ -41,12 +41,15 @@ of year selects the facet deterministically; use `jtsr plan --mode daily-tvm` to
 The mandatory evidence gate rejects proposal-disabled, pre-hard-fork, historical-replay and
 test-only branches from formal findings unless current production reachability is established.
 
-The default profile pair uses `gpt-5.6-terra` for evidence-oriented triage, then gives each triage
-candidate its own `gpt-5.6-sol` skeptical-verifier invocation. One candidate hitting the explicit
-Codex Security cyber-safety block is retried with `gpt-5.5` at `xhigh`; other failure classes do not
-trigger fallback. At most eight candidates are selected in severity order. Each GPT-5.6 primary
+The default profile pair uses `gpt-5.6-sol` at `xhigh` for discovery with a 200 USD estimated-cost
+ceiling, then gives each triage candidate its own `gpt-5.6-sol` at `high` skeptical-verifier
+invocation. This assigns more reasoning to cross-module discovery while keeping verification
+focused on one candidate; the evidence and production-reachability gates remain unchanged.
+Only explicitly recognized usage/rate limits or model-availability errors are retried with
+`gpt-5.5` at `high`. Safety refusals and local budget/time limits never trigger model fallback.
+At most eight candidates are selected in severity order. Each GPT-5.6 primary
 attempt is bounded at 30 USD and 60 minutes, so its 240 USD worst case remains within the 240 USD
-verifier stage ceiling, in addition to the 8 USD triage ceiling. Codex Security does not currently
+verifier stage ceiling, in addition to the 200 USD triage ceiling. Codex Security does not currently
 support estimated-cost limiting for GPT-5.5, so at most three fallback candidates are allowed and
 each is stopped after thirty minutes. These are CLI estimated-cost and wall-clock controls even
 when ChatGPT authentication is selected; they do not describe the ChatGPT subscription bill or
@@ -93,7 +96,7 @@ applies it immediately. The setting is global to the host, so do not enable it i
 shared machine. The daily wrapper checks it before cloning or starting a paid scan.
 
 The new-install default is `JTSR_AUTH=chatgpt`. Keep `OPENAI_API_KEY` empty and keep `JTSR_MODEL`
-empty to retain the two configured models. The installer deliberately does not enable the timer on
+empty to retain the configured profile routing. The installer deliberately does not enable the timer on
 its first run, so an unauthenticated account cannot start an unattended scan.
 
 Start device authentication and follow its journal from the EC2 terminal:

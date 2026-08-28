@@ -11,6 +11,7 @@ from tron_security_review.runner import (
     _candidate_paths,
     _cyber_safety_blocked,
     _estimated_cost,
+    _fallback_reason,
     _has_partial_results,
     _run_command,
     _safe_environment,
@@ -44,7 +45,8 @@ class RunnerTests(unittest.TestCase):
         )
         self.assertLessEqual(primary_worst_case, verifier.max_cost)
         self.assertEqual(verifier.fallback_model, "gpt-5.5")
-        self.assertEqual(verifier.fallback_effort, "xhigh")
+        self.assertEqual(verifier.effort, "high")
+        self.assertEqual(verifier.fallback_effort, "high")
         self.assertEqual(verifier.max_fallbacks, 3)
         self.assertEqual(verifier.per_finding_max_cost, 30)
         self.assertEqual(verifier.per_finding_timeout_minutes, 60)
@@ -62,6 +64,33 @@ class RunnerTests(unittest.TestCase):
             self.assertEqual(_estimated_cost(stderr), 7.25)
             stderr.write_text("partial coverage: timeout\n", encoding="utf-8")
             self.assertFalse(_cyber_safety_blocked(stderr))
+
+    def test_fallback_only_recognizes_availability_failures(self) -> None:
+        cases = {
+            "Error: usage_limit_reached": "usage_limit",
+            "You've hit your usage limit. Try again later.": "usage_limit",
+            "Error: rate_limit_exceeded": "rate_limit",
+            "Rate limit reached for gpt-5.6-sol": "rate_limit",
+            "Error: model_not_found": "model_unavailable",
+            "Error: model_unavailable": "model_unavailable",
+            "Error: model_overloaded": "model_unavailable",
+            "HTTP 429": None,
+            "HTTP 403": None,
+            "partial coverage: timeout": None,
+            "invalid provisional coverage": None,
+            "Scan stopped: estimated cost $201 exceeded the $200 limit": None,
+            "rate_limit_exceeded\njava-tron-security-review: orchestrator timeout": None,
+            "rate_limit_exceeded\nThis content was flagged for possible cyber-security risk.": None,
+            "rate_limit_exceeded\ncontent_policy_violation": None,
+            "model_not_found\nRequest refused by safety policy": None,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            stderr = Path(directory) / "stderr.log"
+            self.assertIsNone(_fallback_reason(stderr))
+            for message, expected in cases.items():
+                with self.subTest(message=message):
+                    stderr.write_text(message, encoding="utf-8")
+                    self.assertEqual(_fallback_reason(stderr), expected)
 
     def test_fallback_timeout_stops_the_process_group_as_partial(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -119,7 +148,7 @@ class RunnerTests(unittest.TestCase):
                 ("actuator/src/main/java/org/tron/core/vm/Example.java",),
             )
 
-    def test_safety_blocked_candidate_falls_back_to_gpt_5_5(self) -> None:
+    def _simulate_verifier_failure(self, failure_message, failure_code=2):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             target = root / "target"
@@ -154,7 +183,10 @@ class RunnerTests(unittest.TestCase):
                 scan_dir = Path(command[command.index("--output-dir") + 1])
                 scan_dir.mkdir(parents=True, exist_ok=True)
                 model = command[command.index("--model") + 1]
-                if model == "gpt-5.6-terra":
+                if scan_dir.parent.name == "triage-tvm-opcode-dispatch":
+                    self.assertEqual(model, "gpt-5.6-sol")
+                    self.assertEqual(command[command.index("--effort") + 1], "xhigh")
+                    self.assertEqual(command[command.index("--max-cost") + 1], "200.0")
                     (scan_dir / "findings.json").write_text(
                         json.dumps(
                             {
@@ -173,16 +205,16 @@ class RunnerTests(unittest.TestCase):
                         encoding="utf-8",
                     )
                     stderr_path.write_text(
-                        "Estimated cost: $1.0 of $8.0 limit\n", encoding="utf-8"
+                        "Estimated cost: $1.0 of $200.0 limit\n", encoding="utf-8"
                     )
                     return 0
                 if model == "gpt-5.6-sol":
+                    self.assertEqual(command[command.index("--effort") + 1], "high")
                     stderr_path.write_text(
-                        "Estimated cost: $2.0 of $8.0 limit\n"
-                        "This content was flagged for possible cyber-security risk.\n",
+                        "Estimated cost: $2.0 of $30.0 limit\n" + failure_message,
                         encoding="utf-8",
                     )
-                    return 2
+                    return failure_code
                 self.assertEqual(model, "gpt-5.5")
                 (scan_dir / "findings.json").write_text(
                     '{"findings": []}\n', encoding="utf-8"
@@ -205,25 +237,66 @@ class RunnerTests(unittest.TestCase):
                     cli_bin=cli_bin,
                 )
 
-            self.assertEqual([result.model for result in results], [
-                "gpt-5.6-terra",
-                "gpt-5.6-sol",
-                "gpt-5.5",
-            ])
-            self.assertFalse(results[1].counts_toward_exit)
-            self.assertTrue(results[2].counts_toward_exit)
-            self.assertEqual(results[1].timeout_seconds, 3600)
-            fallback_command = results[2].command
-            self.assertEqual(
-                fallback_command[fallback_command.index("--effort") + 1], "xhigh"
-            )
-            self.assertEqual(results[2].timeout_seconds, 1800)
-            self.assertNotIn("--max-cost", fallback_command)
-            self.assertIn(str(source.relative_to(target)), fallback_command)
             manifest = json.loads(
                 (run_dir / "run-manifest.json").read_text(encoding="utf-8")
             )
-            self.assertFalse(manifest["partial_coverage"])
+            verification = json.loads(
+                (run_dir / "verifier-tvm-opcode-dispatch" / "verification-manifest.json")
+                .read_text(encoding="utf-8")
+            )
+            return results, manifest, verification
+
+    def test_rate_limited_candidate_falls_back_to_gpt_5_5(self) -> None:
+        for failure_code in (1, 2):
+            with self.subTest(failure_code=failure_code):
+                results, manifest, verification = self._simulate_verifier_failure(
+                    "Error: rate_limit_exceeded\n", failure_code
+                )
+                self.assertEqual([result.model for result in results], [
+                    "gpt-5.6-sol", "gpt-5.6-sol", "gpt-5.5",
+                ])
+                self.assertFalse(results[1].counts_toward_exit)
+                self.assertTrue(results[2].counts_toward_exit)
+                self.assertEqual(results[1].timeout_seconds, 3600)
+                fallback_command = results[2].command
+                self.assertEqual(
+                    fallback_command[fallback_command.index("--effort") + 1], "high"
+                )
+                self.assertEqual(results[2].timeout_seconds, 1800)
+                self.assertNotIn("--max-cost", fallback_command)
+                self.assertIn("actuator/src/main/java/org/tron/core/vm/VM.java", fallback_command)
+                self.assertFalse(manifest["partial_coverage"])
+                self.assertEqual(verification["fallback_count"], 1)
+                self.assertEqual(verification["candidates"][0]["fallback_reason"], "rate_limit")
+
+    def test_safety_refusal_never_falls_back_even_with_a_rate_limit(self) -> None:
+        results, manifest, verification = self._simulate_verifier_failure(
+            "Error: rate_limit_exceeded\n"
+            "This content was flagged for possible cyber-security risk.\n"
+        )
+        self.assertEqual(len(results), 2)
+        self.assertTrue(results[1].safety_blocked)
+        self.assertTrue(results[1].counts_toward_exit)
+        self.assertTrue(manifest["partial_coverage"])
+        self.assertEqual(verification["fallback_count"], 0)
+        self.assertTrue(verification["candidates"][0]["fallback_not_allowed"])
+
+    def test_local_budget_exhaustion_never_falls_back(self) -> None:
+        results, manifest, verification = self._simulate_verifier_failure(
+            "Scan stopped: estimated cost $31 exceeded the $30 limit\n"
+        )
+        self.assertEqual(len(results), 2)
+        self.assertTrue(results[1].counts_toward_exit)
+        self.assertTrue(manifest["partial_coverage"])
+        self.assertEqual(verification["fallback_count"], 0)
+
+    def test_unknown_failure_never_falls_back(self) -> None:
+        results, manifest, verification = self._simulate_verifier_failure(
+            "Custom validation requires valid provisional coverage.\n"
+        )
+        self.assertEqual(len(results), 2)
+        self.assertTrue(manifest["partial_coverage"])
+        self.assertEqual(verification["fallback_count"], 0)
 
     def test_openai_child_environment_does_not_receive_aws_credentials(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

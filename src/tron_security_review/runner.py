@@ -316,6 +316,12 @@ _COST_PATTERN = re.compile(r"Estimated cost:\s*\$([0-9]+(?:\.[0-9]+)?)", re.I)
 _CYBER_SAFETY_MARKERS = (
     "flagged for possible cyber-security risk",
     "trusted access for cyber",
+    "safety policy",
+    "safety_policy",
+    "content_policy_violation",
+    "content_filter",
+    "safety refusal",
+    "request refused",
 )
 _CANDIDATE_FIELDS = (
     "id",
@@ -361,6 +367,30 @@ def _cyber_safety_blocked(stderr_path: Path) -> bool:
     except OSError:
         return False
     return any(marker in text for marker in _CYBER_SAFETY_MARKERS)
+
+
+def _fallback_reason(stderr_path: Path) -> str | None:
+    """Recognize availability failures, never route around safety or local limits."""
+    try:
+        text = stderr_path.read_text(encoding="utf-8", errors="replace").lower()
+    except OSError:
+        return None
+    if any(marker in text for marker in _CYBER_SAFETY_MARKERS) or any(
+        marker in text
+        for marker in ("scan stopped: estimated cost", "orchestrator timeout")
+    ):
+        return None
+    # Deliberately narrow: unknown failures and generic HTTP 403/429 responses
+    # require operator inspection instead of automatically changing models.
+    markers = {
+        "usage_limit": ("usage_limit_reached", "you've hit your usage limit"),
+        "rate_limit": ("rate_limit_exceeded", "rate limit reached for"),
+        "model_unavailable": ("model_not_found", "model_unavailable", "model_overloaded"),
+    }
+    for reason, values in markers.items():
+        if any(marker in text for marker in values):
+            return reason
+    return None
 
 
 def _bounded_candidate_value(value: Any) -> Any:
@@ -703,8 +733,14 @@ def _run_per_finding_job(
             "primary": asdict(primary),
         }
 
+        fallback_reason = (
+            _fallback_reason(Path(primary.stderr_path))
+            if primary.returncode in (1, 2) and not primary.safety_blocked
+            else None
+        )
+        candidate_record["fallback_reason"] = fallback_reason
         can_fallback = fallback_allowed and fallback_count < (profile.max_fallbacks or 0)
-        if primary.returncode == 2 and primary.safety_blocked and can_fallback:
+        if fallback_reason and can_fallback:
             fallback_count += 1
             fallback_model = profile.fallback_model or ""
             fallback_dir = candidate_dir / _attempt_directory_name(fallback_model)
@@ -738,9 +774,7 @@ def _run_per_finding_job(
         else:
             candidate_record["effective_attempt"] = "primary"
             candidate_record["fallback_not_allowed"] = bool(
-                primary.returncode == 2
-                and primary.safety_blocked
-                and not can_fallback
+                primary.safety_blocked or (fallback_reason and not can_fallback)
             )
             attempts.append(primary)
         manifest["candidates"].append(candidate_record)

@@ -32,17 +32,22 @@ The wrapper preserves Codex Security exit semantics:
 - `2`: at least one scan completed only partially or reached a bounded limit.
 - `1`: an operational/configuration error or an unexpected CLI/export failure.
 
-High/Critical verifier work is isolated per triage candidate. A candidate that returns exit `2`
-with the explicit Codex Security cyber-safety marker is retried once with the configured fallback
-model. A successful fallback supersedes that one failed attempt. Timeouts, ordinary bounded
-coverage, budget exhaustion, malformed output and other failures are not silently reclassified as
-safety blocks. Candidates beyond the configured count remain partial coverage and keep exit `2`.
+High/Critical verifier work is isolated per triage candidate. A failed candidate with an explicitly
+recognized usage/rate-limit or model-availability error is retried once with the configured
+fallback model. A successful fallback supersedes that one failed attempt. Safety refusals are
+preserved for operator review and never retried with another model. Timeouts, ordinary bounded
+coverage, local budget exhaustion, malformed output and unknown failures do not trigger fallback.
+Candidates beyond the configured count remain partial coverage and keep exit `2`.
 
-The default verifier bounds at most eight GPT-5.6 candidate attempts to 30 USD and 60 minutes
+The default triage uses Sol/xhigh with a 200 USD estimated-cost ceiling. Verification uses Sol/high
+and bounds at most eight GPT-5.6 candidate attempts to 30 USD and 60 minutes
 each, keeping the 240 USD primary worst case within the verifier stage ceiling of 240 USD. Codex
 Security does not currently provide estimated-cost limiting for GPT-5.5. The fallback therefore
 omits `--max-cost`, is limited to three candidates per run, and has a hard thirty-minute
-process-group timeout per candidate. Treat fallback usage as time-bounded but not cost-bounded.
+process-group timeout per candidate, at `high` effort. Treat fallback usage as time-bounded but
+not cost-bounded. The 200 USD triage threshold is not a whole-run cap: primary verification adds
+up to 240 USD in estimated thresholds, and fallback usage is additional. In-flight requests may
+overshoot CLI estimates. These estimates are not ChatGPT subscription charges or quota balances.
 
 Advisory workflows use `continue-on-error` so partial results can still be exported. Review
 `coverage.json`; a partial or unknown coverage value is never a clean bill of health.

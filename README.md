@@ -9,10 +9,10 @@ SARIF, and keeps scan state outside the target worktree. It is advisory and read
 
 ## What is implemented
 
-- PR diff planning with a fast triage model and isolated, per-finding falsification for
+- PR diff planning with Sol/xhigh discovery and isolated, Sol/high per-finding falsification for
   High/Critical candidates.
-- A GPT-5.5/xhigh fallback only when a GPT-5.6 verifier attempt returns the explicit Codex
-  Security cyber-safety block; unrelated partial or operational failures are not retried.
+- A GPT-5.5/high fallback only for explicitly recognized usage/rate limits or model availability
+  failures. Safety refusals, local budget/time limits and unknown errors do not trigger fallback.
 - One-facet-per-day TVM execution-flow reviews, nightly incremental scans and a seven-domain weekly
   deep-scan rotation.
 - A hard production-reachability admission gate that rejects pre-activation, historical-replay and
@@ -139,7 +139,7 @@ var/scans/<run-id>/
         └── 001-<fingerprint>/
             ├── candidate-context.md
             ├── gpt-5-6-sol/
-            └── gpt-5-5/          # present only after an explicit safety-block fallback
+            └── gpt-5-5/          # present only after an eligible availability fallback
 ```
 
 These files may contain source excerpts, secrets and unpatched vulnerability details. `var/` is

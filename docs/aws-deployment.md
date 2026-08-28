@@ -36,10 +36,12 @@ precompiles/native work, resource limits, activation/replay and simulation parit
 cross-module callers and sinks so the review follows a complete execution flow instead of scanning
 an isolated directory. Set `JTSR_SCOPE` only to force a specific facet for reproduction.
 
-The default OpenAI configuration runs two independent profiles: `gpt-5.6-terra` for the first
-investigation and `gpt-5.6-sol` with a skeptical prompt for falsification. Their configured maximum
-cost is 3 + 6 USD per run. These are ceilings, not a forecast. A result is still a hypothesis until
-the repository's evidence and reachability policy is satisfied.
+The default OpenAI configuration uses `gpt-5.6-sol` at `xhigh` for the first investigation and
+separate `gpt-5.6-sol` at `high` invocations for per-candidate falsification. Triage has a 200 USD
+estimated-cost threshold; primary verification has up to eight 30 USD attempts (240 USD total).
+Availability-only GPT-5.5 fallbacks are additionally bounded by count and time, not cost. These
+thresholds are not forecasts or hard whole-run billing caps. See [operations](operations.md).
+A result is still a hypothesis until the repository's evidence and reachability policy is satisfied.
 
 ## Provisioning
 

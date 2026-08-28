@@ -64,6 +64,15 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(first.jobs[0].scope.id, "tvm-entry-context")
         self.assertEqual(second.jobs[0].scope.id, "tvm-opcode-dispatch")
 
+    def test_discovery_has_more_reasoning_than_per_finding_verification(self) -> None:
+        plan = build_plan(self.config, "daily-tvm", day_of_year=1)
+        triage, verifier = [job.profile for job in plan.jobs]
+        self.assertEqual((triage.model, triage.effort, triage.max_cost),
+                         ("gpt-5.6-sol", "xhigh", 200.0))
+        self.assertEqual((verifier.model, verifier.effort), ("gpt-5.6-sol", "high"))
+        self.assertTrue(verifier.per_finding)
+        self.assertEqual(verifier.candidate_source_profile, "triage")
+
     def test_daily_tvm_scope_can_be_forced_for_reproduction(self) -> None:
         plan = build_plan(
             self.config,
