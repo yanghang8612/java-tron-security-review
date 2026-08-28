@@ -28,6 +28,17 @@ class RunnerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.config = load_config(ROOT)
+        fixture_directory = tempfile.TemporaryDirectory()
+        cls.addClassCleanup(fixture_directory.cleanup)
+        cls.target = Path(fixture_directory.name)
+        # Command-construction tests must not depend on a sibling java-tron clone.
+        for relative in (
+            "actuator/src/main/java/org/tron/core/actuator/VMActuator.java",
+            "actuator/src/main/java/org/tron/core/vm/VM.java",
+        ):
+            source = cls.target / relative
+            source.parent.mkdir(parents=True, exist_ok=True)
+            source.write_text("// command-construction fixture\n", encoding="utf-8")
 
     def test_rejects_output_inside_target(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
@@ -362,7 +373,7 @@ class RunnerTests(unittest.TestCase):
             files=("actuator/src/main/java/org/tron/core/vm/VM.java",),
         )
         job = plan.jobs[0]
-        target = ROOT.parent / "java-tron"
+        target = self.target
         command = build_scan_command(
             config=self.config,
             job=job,
@@ -390,7 +401,7 @@ class RunnerTests(unittest.TestCase):
     def test_deep_command_uses_paths_not_diff(self) -> None:
         plan = build_plan(self.config, "weekly", iso_week=1)
         job = plan.jobs[0]
-        target = ROOT.parent / "java-tron"
+        target = self.target
         command = build_scan_command(
             config=self.config,
             job=job,
@@ -417,7 +428,7 @@ class RunnerTests(unittest.TestCase):
             config=self.config,
             job=plan.jobs[0],
             plan=plan,
-            target=ROOT.parent / "java-tron",
+            target=self.target,
             scan_dir=ROOT / "var/test/tvm-results",
             prompt_path=ROOT / "prompts/scan.md",
             knowledge_bases=available_knowledge_bases(self.config),
@@ -447,7 +458,7 @@ class RunnerTests(unittest.TestCase):
             config=self.config,
             job=verifier,
             plan=plan,
-            target=ROOT.parent / "java-tron",
+            target=self.target,
             scan_dir=ROOT / "var/test/verifier-results",
             prompt_path=ROOT / "prompts/skeptic.md",
             knowledge_bases=available_knowledge_bases(self.config),
@@ -474,12 +485,12 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("Trace account, contract, code, storage", rendered)
 
     def test_chatgpt_scan_command_selects_stored_auth(self) -> None:
-        plan = build_plan(self.config, "daily-tvm")
+        plan = build_plan(self.config, "daily-tvm", day_of_year=1)
         command = build_scan_command(
             config=self.config,
             job=plan.jobs[0],
             plan=plan,
-            target=ROOT.parent / "java-tron",
+            target=self.target,
             scan_dir=ROOT / "var/test/tvm-chatgpt-results",
             prompt_path=ROOT / "prompts/scan.md",
             knowledge_bases=available_knowledge_bases(self.config),
@@ -492,12 +503,12 @@ class RunnerTests(unittest.TestCase):
         self.assertEqual(command[command.index("--auth") + 1], "chatgpt")
 
     def test_bedrock_override_omits_openai_auth_flag(self) -> None:
-        plan = build_plan(self.config, "daily-tvm")
+        plan = build_plan(self.config, "daily-tvm", day_of_year=1)
         command = build_scan_command(
             config=self.config,
             job=plan.jobs[0],
             plan=plan,
-            target=ROOT.parent / "java-tron",
+            target=self.target,
             scan_dir=ROOT / "var/test/bedrock-results",
             prompt_path=ROOT / "prompts/scan.md",
             knowledge_bases=available_knowledge_bases(self.config),
