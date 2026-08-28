@@ -2,6 +2,7 @@ import json
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
+import sys
 import unittest
 import unittest.mock
 
@@ -167,9 +168,9 @@ class RunnerTests(unittest.TestCase):
             source.parent.mkdir(parents=True)
             source.write_text("class Example {}\n", encoding="utf-8")
             output_root = root / "output"
-            cli_bin = root / "codex-security"
-            cli_bin.write_text("#!/bin/sh\nexit 0\n", encoding="utf-8")
-            cli_bin.chmod(0o755)
+            # Invocation is mocked below. An installed executable keeps this
+            # fixture compatible with the production container's noexec /tmp.
+            cli_bin = Path(sys.executable)
             plan = build_plan(
                 self.config,
                 "daily-tvm",

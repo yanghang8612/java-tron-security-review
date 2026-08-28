@@ -5,6 +5,7 @@ from pathlib import Path
 from hashlib import sha256
 from types import SimpleNamespace
 import tempfile
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -172,9 +173,7 @@ class VerificationTests(unittest.TestCase):
 
     def test_reverify_preserves_original_and_progress_survives_one_failure(self):
         before = {str(path.relative_to(self.source)): path.read_bytes() for path in self.source.rglob("*") if path.is_file()}
-        cli = self.root / "cli"
-        cli.write_text("#!/bin/sh\nexit 0\n")
-        cli.chmod(0o700)
+        cli = Path(sys.executable)  # Never launched; process invocation is mocked.
         calls = []
         def fake_run(command, environment, stdout_path, stderr_path, timeout_seconds=None, **watchdog):
             if "export" in command:
