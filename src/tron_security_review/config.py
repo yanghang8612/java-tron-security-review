@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+import math
 import tomllib
 
 
@@ -48,6 +49,9 @@ class Profile:
     fallback_effort: str | None = None
     max_fallbacks: int | None = None
     fallback_timeout_minutes: float | None = None
+    first_response_timeout_minutes: float | None = None
+    idle_timeout_minutes: float | None = None
+    max_retries: int = 0
 
 
 @dataclass(frozen=True)
@@ -166,7 +170,17 @@ def load_config(root: Path | None = None) -> AppConfig:
                 if "fallback_timeout_minutes" in values
                 else None
             ),
+            first_response_timeout_minutes=values.get("first_response_timeout_minutes"),
+            idle_timeout_minutes=values.get("idle_timeout_minutes"),
+            max_retries=values.get("max_retries", 0),
         )
+        for field in ("max_cost", "per_finding_max_cost", "per_finding_timeout_minutes",
+                      "fallback_timeout_minutes", "first_response_timeout_minutes", "idle_timeout_minutes"):
+            value = getattr(profile, field)
+            if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0):
+                raise ValueError(f"profiles.{name}.{field} must be finite and positive")
+        if type(profile.max_retries) is not int or profile.max_retries not in {0, 1}:
+            raise ValueError(f"profiles.{name}.max_retries must be 0 or 1")
         if profile.per_finding:
             if not profile.candidate_source_profile:
                 raise ValueError(

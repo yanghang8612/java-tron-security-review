@@ -70,6 +70,7 @@ async function loadDetail(id) {
     for (const followup of data.followups || []) {const link = el("button", "查看补充复核 · " + followup.id); link.addEventListener("click", () => loadDetail(followup.id)); links.append(link);}
     if (links.children.length) panel.append(links);
     if (data.execution_kind === "verification_only") panel.append(el("p", "本次仅复核原扫描的已有候选，不代表重新完成全部范围扫描；原报告与覆盖缺口保留不变。", "notice"));
+    if (data.retry_of_run_id) panel.append(el("p", "仅重试前次复核失败的候选；已完成结论保留在前次报告：" + data.retry_of_run_id, "notice"));
     const filter = el("div", null, "finding-filter"), searchLabel = el("label", "筛选发现与线索"), search = el("input"), count = el("span", "", "small muted");
     search.id = "finding-search"; search.type = "search"; search.placeholder = "搜索标题、文件、证据或编号"; searchLabel.htmlFor = search.id;
     count.setAttribute("role", "status"); filter.append(searchLabel, search, count); panel.append(filter);

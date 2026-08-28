@@ -19,6 +19,8 @@ class ServerDeploymentTests(unittest.TestCase):
         self.assertIn("JTSR_VERIFY_PLAN_ONLY", script)
         self.assertIn("last-verification.json", script)
         self.assertIn("latest-verification", script)
+        self.assertIn("dst=/scan/previous,readonly", script)
+        self.assertIn("--retry-failed-from /scan/previous", script)
 
     def test_daily_runner_keeps_source_read_only_and_reports_outside_it(self) -> None:
         script = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")

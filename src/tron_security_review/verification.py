@@ -21,7 +21,7 @@ _STOP_IDS = re.compile(r"(?:^|[-_])(?:scan[-_]stopped|scan[-_]interrupted|runtim
 _SEVERITIES = {"critical": 0, "high": 1, "medium": 2, "low": 3}
 
 
-def read_json(path: Path, boundary: Path) -> Any:
+def read_artifact_text(path: Path, boundary: Path) -> str:
     """Only read bounded regular artifacts, never links or files outside the run."""
     relative = path.relative_to(boundary)
     current = boundary
@@ -32,9 +32,13 @@ def read_json(path: Path, boundary: Path) -> Any:
     metadata = path.stat()
     if not stat.S_ISREG(metadata.st_mode) or metadata.st_size > 8 * 1024 * 1024:
         raise ValueError("review artifact is not a bounded regular file")
+    return path.read_text(encoding="utf-8")
+
+
+def read_json(path: Path, boundary: Path) -> Any:
     def reject_constant(value):
         raise ValueError("non-finite JSON number")
-    return json.loads(path.read_text(encoding="utf-8"), parse_constant=reject_constant)
+    return json.loads(read_artifact_text(path, boundary), parse_constant=reject_constant)
 
 
 def _findings(document: Any) -> list[dict]:
@@ -176,6 +180,8 @@ def review_outcome(result, fingerprint: str) -> dict:
     provenance = {"assessment_kind": "model_review", "human_confirmed": False}
     if result.safety_blocked:
         return {**provenance, "status": "blocked", "reason": "safety_blocked"}
+    if getattr(result, "termination_reason", None):
+        return {**provenance, "status": "failed", "reason": result.termination_reason}
     try:
         stderr = Path(result.stderr_path).read_text(encoding="utf-8", errors="replace").lower()
     except OSError:

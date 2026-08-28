@@ -167,21 +167,27 @@ def cmd_summary(args: argparse.Namespace) -> int:
 
 
 def cmd_verify(args: argparse.Namespace) -> int:
-    from .reverify import verification_inputs
+    from .reverify import failed_verification_inputs, verification_inputs
     from .verification import collect_candidates
     config = load_config(args.root)
     target = _target(args, config.system.default_target)
     source = args.source_run.absolute()
     plan, revision, manifest = verification_inputs(config, target, source)
+    retry_selection = None
+    if args.retry_failed_from:
+        retry_selection, _ = failed_verification_inputs(plan, source, manifest, args.retry_failed_from.absolute())
     if args.plan_only:
         queues = []
         for job in plan.jobs:
             if job.profile.per_finding:
                 source_job = next(j for j in plan.jobs if j.profile.name == job.profile.candidate_source_profile)
                 intake = collect_candidates(source, source_job.id)
+                if retry_selection is not None:
+                    intake["candidates"] = [entry for entry in intake["candidates"] if entry["source_fingerprint"] in retry_selection[job.id]]
                 queues.append({"job_id": job.id, "candidate_count": len(intake["candidates"]),
                                "selected_candidate_count": min(len(intake["candidates"]), job.profile.max_candidates),
                                "sources": [entry["source_kind"] for entry in intake["candidates"]],
+                               "fingerprints": [entry["source_fingerprint"] for entry in intake["candidates"]],
                                "excluded": intake["excluded"], "errors": intake["errors"],
                                "profile": asdict(job.profile)})
         print(json.dumps({"execution_kind": "verification_only", "source_run_id": manifest["run_id"],
@@ -193,6 +199,7 @@ def cmd_verify(args: argparse.Namespace) -> int:
         run_id=args.run_id or default_run_id("verify"),
         auth=args.auth or config.system.default_auth, cli_bin=args.cli_bin,
         head_commit=revision, dry_run=args.dry_run, source_run_dir=source,
+        retry_failed_from=args.retry_failed_from.absolute() if args.retry_failed_from else None,
     )
     summary = read_scan_summary(run_dir)
     print(json.dumps({"run_dir": str(run_dir), **summary}, indent=2))
@@ -258,6 +265,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     verify = subparsers.add_parser("verify", help="recheck saved candidates without rerunning discovery")
     verify.add_argument("--source-run", required=True, type=_path)
+    verify.add_argument("--retry-failed-from", type=_path, help="select only failed candidates from a completed supplemental review")
     verify.add_argument("--target", type=_path)
     verify.add_argument("--output-root", type=_path)
     verify.add_argument("--run-id")

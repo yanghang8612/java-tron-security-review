@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from pathlib import Path
+from hashlib import sha256
+import json
 import re
 
 from .gitops import target_metadata
 from .planner import build_plan
-from .verification import read_json
+from .verification import SAFETY_MARKERS, collect_candidates, read_artifact_text, read_json
 
 
 def verification_inputs(config, target: Path, source_run: Path):
@@ -50,4 +52,57 @@ def verification_inputs(config, target: Path, source_run: Path):
         recorded = [job for job in jobs if source and job.get("id") == source.id]
         if source is None or len(recorded) != 1 or recorded[0].get("paths") != list(source.paths):
             raise ValueError("source scope differs from current configuration; inspect before rechecking")
-    return plan, revision, manifest
+    return plan, revision, {**manifest, "target_revision": revision}
+
+
+def failed_verification_inputs(plan, source_run, source_manifest, previous_run):
+    """Select failures by stable identity, never use a report's commands or paths."""
+    previous = read_json(previous_run / "run-manifest.json", previous_run)
+    if not isinstance(previous, dict) or not previous.get("completed_at") or previous.get("dry_run"):
+        raise ValueError("retry source must be a completed, non-dry-run review")
+    if (previous.get("execution_kind") != "verification_only"
+        or previous.get("source_run_id") != source_manifest["run_id"]
+        or previous.get("target_revision") != source_manifest["target_revision"]
+        or not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,159}", str(previous.get("run_id", "")))):
+        raise ValueError("retry source lineage or target revision does not match discovery")
+    selection = {}
+    for job in plan.jobs:
+        if not job.profile.per_finding:
+            continue
+        queue = read_json(previous_run / job.id / "verification-manifest.json", previous_run)
+        if not isinstance(queue, dict) or queue.get("status") != "completed" or not isinstance(queue.get("candidates"), list):
+            raise ValueError("previous review queue must be completed")
+        source_job = next(j for j in plan.jobs if j.profile.name == job.profile.candidate_source_profile)
+        intake = collect_candidates(source_run, source_job.id)
+        if intake["errors"]:
+            raise ValueError("cannot select retry candidates from incomplete source artifacts")
+        known = {entry["source_fingerprint"] for entry in intake["candidates"]}
+        selected, seen = set(), set()
+        for record in queue["candidates"]:
+            fingerprint = record.get("source_fingerprint") if isinstance(record, dict) else None
+            if fingerprint not in known or fingerprint in seen:
+                raise ValueError("previous review has unknown or duplicate candidate identities")
+            seen.add(fingerprint)
+            if record.get("status") != "failed":
+                continue
+            if any(marker in json.dumps(record).lower() for marker in SAFETY_MARKERS):
+                raise ValueError("safety-blocked candidates cannot be retried")
+            if any(isinstance(record.get(name), dict) and record[name].get("safety_blocked") for name in ("primary", "retry", "fallback")):
+                raise ValueError("safety-blocked attempts cannot be retried")
+            index = record.get("index")
+            if type(index) is not int or index < 1 or index > 10000:
+                raise ValueError("invalid previous candidate index")
+            token = sha256(fingerprint.encode()).hexdigest()[:12]
+            directory = previous_run / job.id / "candidates" / f"{index:03d}-{token}"
+            logs = list(directory.glob("*/invocation.stderr.log"))
+            if not logs:
+                raise ValueError("previous failure logs are missing; inspect before retrying")
+            for log in logs:
+                text = read_artifact_text(log, previous_run).lower()
+                if any(marker in text for marker in SAFETY_MARKERS):
+                    raise ValueError("safety-blocked attempts cannot be retried")
+            selected.add(fingerprint)
+        selection[job.id] = selected
+    if not any(selection.values()):
+        raise ValueError("previous review has no eligible failed candidates")
+    return selection, previous

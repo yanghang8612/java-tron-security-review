@@ -52,6 +52,7 @@ JTSR_SCANNER_GID="${JTSR_SCANNER_GID:-10001}"
 JTSR_SECCOMP_PROFILE="${JTSR_SECCOMP_PROFILE:-/etc/java-tron-security-review/codex-security-seccomp.json}"
 JTSR_VERIFY_SOURCE_RUN="${JTSR_VERIFY_SOURCE_RUN:-}"
 JTSR_VERIFY_PLAN_ONLY="${JTSR_VERIFY_PLAN_ONLY:-0}"
+JTSR_VERIFY_RETRY_FROM="${JTSR_VERIFY_RETRY_FROM:-}"
 
 JTSR_OUTPUT_ROOT="$(realpath -m -- "$JTSR_OUTPUT_ROOT")"
 JTSR_WORK_ROOT="$(realpath -m -- "$JTSR_WORK_ROOT")"
@@ -98,6 +99,13 @@ if ! flock -n 9; then
 fi
 
 SOURCE_RUN_DIR=""
+PREVIOUS_RUN_DIR=""
+if [[ -n "$JTSR_VERIFY_RETRY_FROM" ]]; then
+  [[ -n "$JTSR_VERIFY_SOURCE_RUN" ]] || fail "retry requires the original discovery source"
+  [[ "$JTSR_VERIFY_RETRY_FROM" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$ ]] || fail "invalid previous run id"
+  PREVIOUS_RUN_DIR="$JTSR_OUTPUT_ROOT/$JTSR_VERIFY_RETRY_FROM"
+  [[ -d "$PREVIOUS_RUN_DIR" && ! -L "$PREVIOUS_RUN_DIR" ]] || fail "previous run must be a real directory"
+fi
 if [[ -n "$JTSR_VERIFY_SOURCE_RUN" ]]; then
   [[ "$JTSR_VERIFY_SOURCE_RUN" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$ ]] || fail "invalid source run id"
   SOURCE_RUN_DIR="$JTSR_OUTPUT_ROOT/$JTSR_VERIFY_SOURCE_RUN"
@@ -273,6 +281,9 @@ if [[ -n "$JTSR_VERIFY_SOURCE_RUN" ]]; then
     --mount "type=bind,src=$RUN_DIR,dst=/scan/output/$RUN_ID"
     --mount "type=bind,src=$SOURCE_RUN_DIR,dst=/scan/source,readonly"
   )
+  if [[ -n "$PREVIOUS_RUN_DIR" ]]; then
+    DOCKER_ARGS+=(--mount "type=bind,src=$PREVIOUS_RUN_DIR,dst=/scan/previous,readonly")
+  fi
 else
   DOCKER_ARGS+=(--mount "type=bind,src=$JTSR_OUTPUT_ROOT,dst=/scan/output")
 fi
@@ -297,6 +308,9 @@ if [[ -n "$JTSR_VERIFY_SOURCE_RUN" ]]; then
   SCAN_ARGS=(jtsr verify --source-run /scan/source --target /scan/target
     --output-root /scan/output --run-id "$RUN_ID" --cli-bin /usr/local/bin/codex-security)
   SCAN_ARGS+=("${RUNTIME_SCAN_ARGS[@]}")
+  if [[ -n "$PREVIOUS_RUN_DIR" ]]; then
+    SCAN_ARGS+=(--retry-failed-from /scan/previous)
+  fi
   docker "${DOCKER_ARGS[@]}" "$JTSR_IMAGE" jtsr doctor --target /scan/target
   docker "${DOCKER_ARGS[@]}" "$JTSR_IMAGE" "${SCAN_ARGS[@]}" --plan-only
   if [[ "$JTSR_VERIFY_PLAN_ONLY" == 1 ]]; then

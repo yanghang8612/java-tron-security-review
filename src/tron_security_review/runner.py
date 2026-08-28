@@ -7,10 +7,9 @@ import json
 import os
 from pathlib import Path
 import re
-import signal
 import shlex
 import shutil
-import subprocess
+import time
 from typing import Any, Iterable
 
 from .artifacts import (
@@ -20,7 +19,8 @@ from .artifacts import (
 )
 from .config import AppConfig, available_knowledge_bases
 from .planner import PlanJob, ScanPlan, existing_scope_paths
-from .verification import SAFETY_MARKERS, collect_candidates, review_outcome
+from .verification import SAFETY_MARKERS, collect_candidates, read_json, review_outcome
+from .supervision import execution_path, run_command as _run_command
 
 
 @dataclass(frozen=True)
@@ -39,6 +39,10 @@ class InvocationResult:
     safety_blocked: bool = False
     counts_toward_exit: bool = True
     timeout_seconds: float | None = None
+    termination_reason: str | None = None
+    duration_seconds: float | None = None
+    first_response_timeout_seconds: float | None = None
+    idle_timeout_seconds: float | None = None
 
 
 def default_run_id(mode: str) -> str:
@@ -224,6 +228,7 @@ def build_scan_command(
             str(prompt_path),
             "--headless",
             "--json",
+            "--verbose",
         ]
     )
     # Codex Security custom validation uses a schema-constrained validation turn.
@@ -269,47 +274,6 @@ def build_scan_command(
     if dry_run:
         command.append("--dry-run")
     return command
-
-
-def _run_command(
-    command: list[str],
-    environment: dict[str, str],
-    stdout_path: Path,
-    stderr_path: Path,
-    timeout_seconds: float | None = None,
-) -> int:
-    with stdout_path.open("w", encoding="utf-8") as stdout_handle, stderr_path.open(
-        "w", encoding="utf-8"
-    ) as stderr_handle:
-        process = subprocess.Popen(
-            command,
-            env=environment,
-            stdout=stdout_handle,
-            stderr=stderr_handle,
-            text=True,
-            start_new_session=True,
-        )
-        try:
-            return process.wait(timeout=timeout_seconds)
-        except subprocess.TimeoutExpired:
-            try:
-                os.killpg(process.pid, signal.SIGTERM)
-            except ProcessLookupError:
-                pass
-            try:
-                process.wait(timeout=5)
-            except subprocess.TimeoutExpired:
-                try:
-                    os.killpg(process.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                process.wait()
-            stderr_handle.write(
-                f"\njava-tron-security-review: orchestrator timeout after "
-                f"{timeout_seconds:g} seconds\n"
-            )
-            stderr_handle.flush()
-            return 2
 
 
 _COST_PATTERN = re.compile(r"Estimated cost:\s*\$([0-9]+(?:\.[0-9]+)?)", re.I)
@@ -371,16 +335,20 @@ def _cyber_safety_blocked(stderr_path: Path) -> bool:
     return any(marker in text for marker in _CYBER_SAFETY_MARKERS)
 
 
-def _fallback_reason(stderr_path: Path) -> str | None:
+def _fallback_reason(stderr_path: Path, termination_reason: str | None = None) -> str | None:
     """Recognize availability failures, never route around safety or local limits."""
     try:
         text = stderr_path.read_text(encoding="utf-8", errors="replace").lower()
     except OSError:
         return None
-    if any(marker in text for marker in _CYBER_SAFETY_MARKERS) or any(
-        marker in text
-        for marker in ("scan stopped: estimated cost", "orchestrator timeout")
-    ):
+    if any(marker in text for marker in (*_CYBER_SAFETY_MARKERS,
+        "scan stopped: estimated cost", "authentication interrupted", "invalid_api_key",
+        "token_expired", "refresh_token", "unauthorized", "forbidden", "http 401", "http 403",
+        "reason=\"authentication\"", "reason=\"authorization\"",
+    )):
+        return None
+    stall = termination_reason in {"first_response_timeout", "no_progress_timeout"}
+    if "orchestrator timeout" in text and not stall:
         return None
     # Deliberately narrow: unknown failures and generic HTTP 403/429 responses
     # require operator inspection instead of automatically changing models.
@@ -388,11 +356,27 @@ def _fallback_reason(stderr_path: Path) -> str | None:
         "usage_limit": ("usage_limit_reached", "you've hit your usage limit"),
         "rate_limit": ("rate_limit_exceeded", "rate limit reached for"),
         "model_unavailable": ("model_not_found", "model_unavailable", "model_overloaded"),
+        "network_error": ("network connection interrupted; retrying", 'connection.retry reason="network"',
+                          "econnreset", "econnrefused", "etimedout"),
     }
     for reason, values in markers.items():
         if any(marker in text for marker in values):
             return reason
-    return None
+    if "http 429" in text or "unexpected status 429" in text:
+        return None
+    return termination_reason if stall else None
+
+
+def _recovery_reason(result: InvocationResult) -> str | None:
+    if result.returncode == 0 or result.safety_blocked:
+        return None
+    try:
+        output = read_json(Path(result.stdout_path), Path(result.scan_dir).parent)
+        if output.get("turn", {}).get("status") == "completed":
+            return None  # Resolved transient messages in a completed scan are not failures.
+    except (OSError, ValueError, AttributeError, RecursionError):
+        pass
+    return _fallback_reason(Path(result.stderr_path), result.termination_reason)
 
 
 def _bounded_candidate_value(value: Any, depth: int = 0) -> Any:
@@ -598,7 +582,13 @@ def _invoke_scan(
         stdout_path,
         stderr_path,
         timeout_seconds=timeout_seconds,
+        first_response_timeout_seconds=(job.profile.first_response_timeout_minutes or 0) * 60 or None,
+        idle_timeout_seconds=(job.profile.idle_timeout_minutes or 0) * 60 or None,
     )
+    try:
+        execution = read_json(execution_path(stdout_path), attempt_dir)
+    except (OSError, ValueError):
+        execution = {}
 
     export_returncode: int | None = None
     sarif_path: Path | None = None
@@ -617,7 +607,7 @@ def _invoke_scan(
             str(sarif_path),
         ]
         export_returncode = _run_command(
-            export_command, environment, export_stdout, export_stderr
+            export_command, environment, export_stdout, export_stderr, timeout_seconds=120
         )
         if export_returncode != 0 or not sarif_path.exists():
             sarif_path = None
@@ -638,6 +628,10 @@ def _invoke_scan(
         estimated_cost=_estimated_cost(stderr_path),
         safety_blocked=_cyber_safety_blocked(stderr_path),
         timeout_seconds=timeout_seconds,
+        termination_reason=execution.get("termination_reason"),
+        duration_seconds=execution.get("duration_seconds"),
+        first_response_timeout_seconds=(job.profile.first_response_timeout_minutes or 0) * 60 or None,
+        idle_timeout_seconds=(job.profile.idle_timeout_minutes or 0) * 60 or None,
     )
 
 
@@ -671,6 +665,7 @@ def _run_per_finding_job(
     provider_override: str | None,
     model_override: str | None,
     source_run_dir: Path | None = None,
+    selected_fingerprints: set[str] | None = None,
 ) -> tuple[list[InvocationResult], bool]:
     job_dir = run_dir / job.id
     job_dir.mkdir(parents=True, exist_ok=True)
@@ -685,6 +680,9 @@ def _run_per_finding_job(
         "stage_max_cost": profile.max_cost,
         "per_finding_max_cost": profile.per_finding_max_cost,
         "per_finding_timeout_minutes": profile.per_finding_timeout_minutes,
+        "first_response_timeout_minutes": profile.first_response_timeout_minutes,
+        "idle_timeout_minutes": profile.idle_timeout_minutes,
+        "max_retries": profile.max_retries,
         "fallback_model": profile.fallback_model,
         "fallback_effort": profile.fallback_effort,
         "max_fallbacks": profile.max_fallbacks,
@@ -708,6 +706,10 @@ def _run_per_finding_job(
     manifest["intake_errors"] = intake["errors"]
     manifest["excluded"] = intake["excluded"]
     candidates = intake["candidates"]
+    if selected_fingerprints is not None:
+        manifest["source_candidate_count"] = len(candidates)
+        candidates = [entry for entry in candidates if entry["source_fingerprint"] in selected_fingerprints]
+        manifest["retry_failed_only"] = True
     if _cyber_safety_blocked(source_root / source_job.id / "invocation.stderr.log"):
         manifest["error"] = "source scan was safety-blocked; do not retry through verification"
         manifest["status"] = "blocked"
@@ -778,12 +780,35 @@ def _run_per_finding_job(
         )
         candidate_record["primary"] = asdict(primary)
         effective = primary
+        candidate_attempts = [("primary", primary)]
+        candidate_record["effective_attempt"] = "primary"
+        recovery = _recovery_reason(primary)
+        # One same-model retry shares the original candidate's measured budget
+        # and wall clock. Unknown usage reserves the whole budget, never zero.
+        if recovery in {"network_error", "first_response_timeout", "no_progress_timeout"} and profile.max_retries:
+            remaining_cost = max(0, (profile.per_finding_max_cost or 0) - primary.estimated_cost) if primary.estimated_cost is not None else 0
+            remaining_time = max(0, (profile.per_finding_timeout_minutes or 0) * 60 - primary.duration_seconds - 5) if primary.duration_seconds is not None else 0
+            if remaining_cost > 0 and remaining_time >= (profile.first_response_timeout_minutes or 5) * 60:
+                candidate_record.update(retry_reason=recovery, effective_attempt="retry", retry_count=1)
+                write_json(manifest_path, manifest)
+                time.sleep(5)
+                retry = _invoke_scan(
+                    config=config, job=job, plan=plan, target=target,
+                    attempt_dir=candidate_dir / (_attempt_directory_name(primary_model) + "-retry-1"),
+                    prompt_path=prompt_path, knowledge_bases=knowledge_bases,
+                    environment=environment, auth=auth, cli_bin=cli_bin,
+                    base_commit=base_commit, head_commit=head_commit, dry_run=False,
+                    provider_override=provider_override, model_override=model_override,
+                    max_cost_override=remaining_cost, paths_override=candidate_paths or None,
+                    timeout_seconds=remaining_time, job_id=f"{job.id}/candidate-{index:03d}/retry",
+                )
+                candidate_record["retry"] = asdict(retry)
+                candidate_attempts.append(("retry", retry))
+                effective = retry
+            else:
+                candidate_record["retry_skipped_reason"] = "unknown_usage_or_candidate_budget_exhausted"
 
-        fallback_reason = (
-            _fallback_reason(Path(primary.stderr_path))
-            if primary.returncode in (1, 2) and not primary.safety_blocked
-            else None
-        )
+        fallback_reason = _recovery_reason(effective)
         candidate_record["fallback_reason"] = fallback_reason
         can_fallback = fallback_allowed and fallback_count < (profile.max_fallbacks or 0)
         if fallback_reason and can_fallback:
@@ -815,18 +840,18 @@ def _run_per_finding_job(
                 timeout_seconds=(profile.fallback_timeout_minutes or 0) * 60,
                 job_id=f"{job.id}/candidate-{index:03d}/fallback",
             )
-            primary = replace(primary, counts_toward_exit=False)
-            candidate_record["primary"] = asdict(primary)
             candidate_record["fallback"] = asdict(fallback)
             candidate_record["effective_attempt"] = "fallback"
             effective = fallback
-            attempts.extend((primary, fallback))
+            candidate_attempts.append(("fallback", fallback))
         else:
-            candidate_record["effective_attempt"] = "primary"
             candidate_record["fallback_not_allowed"] = bool(
-                primary.safety_blocked or (fallback_reason and not can_fallback)
+                effective.safety_blocked or (fallback_reason and not can_fallback)
             )
-            attempts.append(primary)
+        for name, attempt in candidate_attempts:
+            attempt = replace(attempt, counts_toward_exit=(name == candidate_record["effective_attempt"]))
+            candidate_record[name] = asdict(attempt)
+            attempts.append(attempt)
         candidate_record.update(review_outcome(effective, fingerprint))
         candidate_record["completed_at"] = datetime.now(timezone.utc).isoformat()
         write_json(manifest_path, manifest)
@@ -862,14 +887,22 @@ def run_plan(
     provider_override: str | None = None,
     model_override: str | None = None,
     source_run_dir: Path | None = None,
+    retry_failed_from: Path | None = None,
 ) -> tuple[Path, tuple[InvocationResult, ...]]:
     ensure_output_is_safe(target, output_root)
     source_manifest = None
+    retry_selection = None
+    retry_manifest = None
     if source_run_dir:
         from .reverify import verification_inputs
         expected_plan, source_revision, source_manifest = verification_inputs(config, target, source_run_dir)
         if source_revision != head_commit or expected_plan != plan:
             raise ValueError("verification must use the original target revision and trusted scope plan")
+    if retry_failed_from:
+        if not source_run_dir:
+            raise ValueError("retry-failed requires the original discovery source")
+        from .reverify import failed_verification_inputs
+        retry_selection, retry_manifest = failed_verification_inputs(plan, source_run_dir, source_manifest, retry_failed_from)
     if not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]{0,159}", run_id):
         raise ValueError("invalid run id")
     run_dir = output_root.resolve() / run_id
@@ -877,6 +910,8 @@ def run_plan(
         raise ValueError("run already exists; choose a new run id")
     if source_run_dir and (run_dir == source_run_dir.resolve() or run_dir.is_relative_to(source_run_dir.resolve())):
         raise ValueError("verification output must not overwrite the source run")
+    if retry_failed_from and (run_dir == retry_failed_from.resolve() or run_dir.is_relative_to(retry_failed_from.resolve())):
+        raise ValueError("verification output must not overwrite the previous review")
     run_dir.mkdir(parents=True, exist_ok=True)
     state_dir = (run_dir if source_run_dir else output_root.resolve()) / ".state"
     state_dir.mkdir(parents=True, exist_ok=True)
@@ -910,6 +945,8 @@ def run_plan(
     }
     if source_manifest:
         initial_manifest["source_run_id"] = source_manifest["run_id"]
+    if retry_manifest:
+        initial_manifest["retry_of_run_id"] = retry_manifest["run_id"]
     write_json(run_dir / "run-manifest.json", initial_manifest)
 
     results: list[InvocationResult] = []
@@ -932,6 +969,7 @@ def run_plan(
                 provider_override=provider_override,
                 model_override=model_override,
                 source_run_dir=source_run_dir,
+                selected_fingerprints=retry_selection.get(job.id, set()) if retry_selection is not None else None,
             )
             results.extend(candidate_results)
             partial_coverage = partial_coverage or candidate_partial

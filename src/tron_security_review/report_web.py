@@ -210,6 +210,7 @@ class ReportStore:
                 "completed_at": manifest.get("completed_at"),
                 "execution_kind": manifest.get("execution_kind", "scan"),
                 "source_run_id": manifest.get("source_run_id"),
+                "retry_of_run_id": manifest.get("retry_of_run_id"),
                 "finding_count": count if isinstance(count, int) and count >= 0 else None,
                 "estimated_cost": round(cost, 6) if has_cost else None,
                 "models": sorted(models), "mode": plan.get("run_mode") or plan.get("mode"),

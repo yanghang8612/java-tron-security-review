@@ -159,7 +159,7 @@ class RunnerTests(unittest.TestCase):
                 ("actuator/src/main/java/org/tron/core/vm/Example.java",),
             )
 
-    def _simulate_verifier_failure(self, failure_message, failure_code=2):
+    def _simulate_verifier_failure(self, failure_message, failure_code=2, termination=None, known_usage=True):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             target = root / "target"
@@ -182,6 +182,7 @@ class RunnerTests(unittest.TestCase):
                 stdout_path,
                 stderr_path,
                 timeout_seconds=None,
+                **watchdog,
             ):
                 stdout_path.parent.mkdir(parents=True, exist_ok=True)
                 stdout_path.write_text("{}\n", encoding="utf-8")
@@ -222,9 +223,12 @@ class RunnerTests(unittest.TestCase):
                 if model == "gpt-5.6-sol":
                     self.assertEqual(command[command.index("--effort") + 1], "high")
                     stderr_path.write_text(
-                        "Estimated cost: $2.0 of $30.0 limit\n" + failure_message,
+                        ("Estimated cost: $2.0 of $30.0 limit\n" if known_usage else "") + failure_message,
                         encoding="utf-8",
                     )
+                    if termination:
+                        from tron_security_review.supervision import execution_path
+                        execution_path(stdout_path).write_text(json.dumps({"termination_reason": termination, "duration_seconds": 600}))
                     return failure_code
                 self.assertEqual(model, "gpt-5.5")
                 (scan_dir / "findings.json").write_text(
@@ -293,6 +297,31 @@ class RunnerTests(unittest.TestCase):
         self.assertTrue(manifest["partial_coverage"])
         self.assertEqual(verification["fallback_count"], 0)
         self.assertTrue(verification["candidates"][0]["fallback_not_allowed"])
+
+    def test_stalled_review_has_one_budgeted_retry_then_one_fallback(self):
+        with unittest.mock.patch("tron_security_review.runner.time.sleep"):
+            results, manifest, queue = self._simulate_verifier_failure("orchestrator timeout", termination="no_progress_timeout")
+        self.assertEqual([r.model for r in results], ["gpt-5.6-sol"] * 3 + ["gpt-5.5"])
+        self.assertEqual([r.counts_toward_exit for r in results], [True, False, False, True])
+        self.assertEqual(results[2].command[results[2].command.index("--max-cost") + 1], "28.0")
+        self.assertEqual(results[2].timeout_seconds, 2995)
+        self.assertEqual(queue["candidates"][0]["retry_count"], 1)
+        self.assertEqual(queue["candidates"][0]["effective_attempt"], "fallback")
+        self.assertEqual(queue["fallback_count"], 1)
+        self.assertTrue(manifest["partial_coverage"])
+
+    def test_unknown_usage_skips_same_model_retry_without_inventing_zero_cost(self):
+        results, _, queue = self._simulate_verifier_failure("orchestrator timeout", termination="first_response_timeout", known_usage=False)
+        self.assertEqual(len(results), 3)
+        self.assertEqual(results[-1].model, "gpt-5.5")
+        self.assertNotIn("retry", queue["candidates"][0])
+        self.assertEqual(queue["candidates"][0]["retry_skipped_reason"], "unknown_usage_or_candidate_budget_exhausted")
+
+    def test_stall_with_safety_block_never_retries_or_falls_back(self):
+        results, _, queue = self._simulate_verifier_failure("content_filter\norchestrator timeout", termination="no_progress_timeout")
+        self.assertEqual(len(results), 2)
+        self.assertNotIn("retry", queue["candidates"][0])
+        self.assertEqual(queue["candidates"][0]["status"], "blocked")
 
     def test_local_budget_exhaustion_never_falls_back(self) -> None:
         results, manifest, verification = self._simulate_verifier_failure(

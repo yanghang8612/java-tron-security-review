@@ -2,6 +2,7 @@ import copy
 from dataclasses import replace
 import json
 from pathlib import Path
+from hashlib import sha256
 from types import SimpleNamespace
 import tempfile
 import unittest
@@ -10,7 +11,7 @@ from unittest.mock import patch
 from tron_security_review.artifacts import write_json
 from tron_security_review.config import load_config
 from tron_security_review.planner import build_plan
-from tron_security_review.reverify import verification_inputs
+from tron_security_review.reverify import failed_verification_inputs, verification_inputs
 from tron_security_review.runner import _candidate_paths, run_plan
 from tron_security_review.verification import collect_candidates, review_outcome, validate_verdict
 
@@ -175,7 +176,7 @@ class VerificationTests(unittest.TestCase):
         cli.write_text("#!/bin/sh\nexit 0\n")
         cli.chmod(0o700)
         calls = []
-        def fake_run(command, environment, stdout_path, stderr_path, timeout_seconds=None):
+        def fake_run(command, environment, stdout_path, stderr_path, timeout_seconds=None, **watchdog):
             if "export" in command:
                 Path(command[command.index("--output") + 1]).write_text("{}")
                 return 0
@@ -225,6 +226,68 @@ class VerificationTests(unittest.TestCase):
         command.assert_not_called()
         self.assertFalse(results)
         self.assertEqual(json.loads((run_dir / VERIFY_JOB / "verification-manifest.json").read_text())["status"], "blocked")
+
+    def previous_review(self):
+        previous = self.root / "previous-review"
+        write_json(previous / "run-manifest.json", {**self.manifest, "run_id": "previous-review",
+                   "execution_kind": "verification_only", "source_run_id": "source-run"})
+        records = []
+        for index in range(1, 6):
+            fingerprint = f"native:candidate-{index}"
+            records.append({"index": index, "source_fingerprint": fingerprint,
+                            "status": "insufficient_evidence" if index < 3 else "failed"})
+            directory = previous / VERIFY_JOB / "candidates" / f"{index:03d}-{sha256(fingerprint.encode()).hexdigest()[:12]}" / "gpt-5-6-sol"
+            directory.mkdir(parents=True)
+            (directory / "invocation.stderr.log").write_text("orchestrator timeout after 3600 seconds")
+        write_json(previous / VERIFY_JOB / "verification-manifest.json", {"status": "completed", "candidates": records})
+        return previous
+
+    def test_retry_selects_only_failed_and_preserves_both_source_runs(self):
+        previous = self.previous_review()
+        before = {str(p): p.read_bytes() for root in (previous, self.source) for p in root.rglob("*") if p.is_file()}
+        selection, _ = failed_verification_inputs(self.plan, self.source, self.manifest, previous)
+        self.assertEqual(selection[VERIFY_JOB], {f"native:candidate-{i}" for i in (3, 4, 5)})
+        with patch("tron_security_review.reverify.target_metadata", return_value=self.metadata), patch("tron_security_review.runner._run_command") as execute:
+            run_dir, _ = run_plan(self.config, self.plan, self.target, self.root / "output", "retry-run", "chatgpt",
+                                 head_commit="a" * 40, source_run_dir=self.source, retry_failed_from=previous, dry_run=True)
+        execute.assert_not_called()
+        queue = json.loads((run_dir / VERIFY_JOB / "verification-manifest.json").read_text())
+        self.assertEqual(queue["selected_candidate_count"], 3)
+        self.assertEqual(queue["source_candidate_count"], 5)
+        self.assertEqual({r["source_fingerprint"] for r in queue["candidates"]}, selection[VERIFY_JOB])
+        self.assertEqual(json.loads((run_dir / "run-manifest.json").read_text())["retry_of_run_id"], "previous-review")
+        self.assertEqual(before, {str(p): p.read_bytes() for root in (previous, self.source) for p in root.rglob("*") if p.is_file()})
+
+    def test_retry_rejects_mismatched_lineage_unfinished_and_dry_runs(self):
+        previous = self.previous_review()
+        path = previous / "run-manifest.json"
+        original = json.loads(path.read_text())
+        for updates in ({"target_revision": "b" * 40}, {"source_run_id": "other"},
+                        {"dry_run": True}, {"completed_at": None}, {"execution_kind": "scan"}):
+            write_json(path, {**original, **updates})
+            with self.subTest(updates=updates), self.assertRaises(ValueError):
+                failed_verification_inputs(self.plan, self.source, self.manifest, previous)
+
+    def test_retry_cannot_bypass_safety_or_read_symlink_logs(self):
+        previous = self.previous_review()
+        log = next((previous / VERIFY_JOB / "candidates").glob("003-*/*/invocation.stderr.log"))
+        log.write_text("rate_limit_exceeded\ncontent_policy_violation")
+        with self.assertRaisesRegex(ValueError, "safety-blocked"):
+            failed_verification_inputs(self.plan, self.source, self.manifest, previous)
+        log.unlink()
+        outside = self.root / "outside.log"
+        outside.write_text("timeout")
+        log.symlink_to(outside)
+        with self.assertRaises(ValueError):
+            failed_verification_inputs(self.plan, self.source, self.manifest, previous)
+
+    def test_explicit_timeout_does_not_accept_an_intermediate_verdict(self):
+        result = self.result(code=2)
+        result.termination_reason = "no_progress_timeout"
+        write_json(Path(result.scan_dir) / "artifacts/jtsr-verdict.json", verdict())
+        outcome = review_outcome(result, "native:candidate-1")
+        self.assertEqual(outcome["reason"], "no_progress_timeout")
+        self.assertEqual(outcome["status"], "failed")
 
 
 if __name__ == "__main__":

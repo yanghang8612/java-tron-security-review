@@ -161,7 +161,7 @@ const ReportView = (() => {
   }
   function reviewDetails(parent, record) {
     const verdict = object(record.verdict);
-    const reasons = {missing_invalid_or_conflicting_explicit_verdict: "复核没有返回可核验的明确结论，不能按未发现问题判定排除。", review_attempt_failed_or_interrupted: "复核执行失败或中断，已保留其他候选结果。", review_turn_not_completed: "复核未正常完成。", safety_blocked: "触发安全限制，未通过更换模型重试。"};
+    const reasons = {first_response_timeout: "等待首次有效进展超时；启动提示和预检心跳不计为进展。", no_progress_timeout: "审查长时间没有新的有效进展，已中止并保留中间结果。", wall_timeout: "达到本条复核总时限，未将中间结果当成完整结论。", missing_invalid_or_conflicting_explicit_verdict: "复核没有返回可核验的明确结论，不能按未发现问题判定排除。", review_attempt_failed_or_interrupted: "复核执行失败或中断，已保留其他候选结果。", review_turn_not_completed: "复核未正常完成。", safety_blocked: "触发安全限制，未通过更换模型重试。"};
     block(parent, "独立复核结论", first(verdict.rationale, reasons[record.reason], record.reason));
     block(parent, "仍缺少的证据", verdict.missing_evidence, "review-gap");
     if (present(verdict.evidence) || present(verdict.production_reachability)) {
@@ -172,6 +172,8 @@ const ReportView = (() => {
       parent.append(details);
     }
     const attempt = object(record[record.effective_attempt || "primary"]);
+    if (record.retry_count) parent.append(node("p", "原模型重试：" + record.retry_count + " 次，共享原有成本与总时限。", "finding-source"));
+    if (record.fallback_reason) block(parent, "恢复原因", ({first_response_timeout: "首响应超时", no_progress_timeout: "长时间无进展", network_error: "网络连接中断", rate_limit: "模型限流", usage_limit: "模型额度限制", model_unavailable: "模型不可用"})[record.fallback_reason] || record.fallback_reason);
     if (attempt.model) parent.append(node("p", "复核模型：" + attempt.model + " · " + (attempt.effort || "未记录") + (record.effective_attempt === "fallback" ? " · 可用性故障后降级" : ""), "finding-source"));
   }
   function verification(record, index) {

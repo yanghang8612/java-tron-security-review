@@ -35,12 +35,18 @@ The wrapper preserves Codex Security exit semantics:
 High/Critical verifier work is isolated per triage candidate. A failed candidate with an explicitly
 recognized usage/rate-limit or model-availability error is retried once with the configured
 fallback model. A successful fallback supersedes that one failed attempt. Safety refusals are
-preserved for operator review and never retried with another model. Timeouts, ordinary bounded
-coverage, local budget exhaustion, malformed output and unknown failures do not trigger fallback.
+preserved for operator review and never retried with another model. Total wall-clock limits, ordinary
+bounded coverage, local budget exhaustion, authentication/authorization errors, malformed output
+and unknown failures do not trigger fallback. First-progress (5 minutes) and no-progress (10 minutes)
+timeouts, plus explicit network failures, allow one same-model retry within the original remaining
+measured cost/time budget and then at most one fallback. Unknown cost/time skips the same-model
+retry rather than treating unknown usage as zero. Completed partial reviews are not retried.
+Startup/preflight and reconnect heartbeats do not reset the progress watchdog. See
+[candidate verification](candidate-verification.md) for retry selection and diagnostic artifacts.
 Candidates beyond the configured count remain partial coverage and keep exit `2`.
 
 The default triage uses Sol/xhigh with a 200 USD estimated-cost ceiling. Verification uses Sol/high
-and bounds at most eight GPT-5.6 candidate attempts to 30 USD and 60 minutes
+and bounds at most eight GPT-5.6 candidates (including their same-model retry) to 30 USD and 60 minutes
 each, keeping the 240 USD primary worst case within the verifier stage ceiling of 240 USD. Codex
 Security does not currently provide estimated-cost limiting for GPT-5.5. The fallback therefore
 omits `--max-cost`, is limited to three candidates per run, and has a hard thirty-minute
