@@ -13,6 +13,9 @@ var/*
 
 .env
 deploy/server/jtsr.env
+deploy/server/report-web.env
+report-web-auth.json
+report-web-login.txt
 .DS_Store
 
 # AWS/Terraform local state and deployment inputs can contain account metadata or secrets.

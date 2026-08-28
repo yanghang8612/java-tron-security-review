@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "java-tron-security-review"
-version = "0.3.2"
+version = "0.4.0"
 description = "Evidence-driven, scheduled Codex Security reviews for java-tron"
 readme = "README.md"
 requires-python = ">=3.11"
@@ -18,6 +18,9 @@ jtsr = "tron_security_review.cli:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+tron_security_review = ["web/*.html", "web/*.js", "web/*.css"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

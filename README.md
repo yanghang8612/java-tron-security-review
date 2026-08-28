@@ -27,6 +27,8 @@ SARIF, and keeps scan state outside the target worktree. It is advisory and read
   private reports, retention and failure webhook.
 - An optional AWS-managed CodeBuild/EventBridge deployment for operators who explicitly want it.
 - Dependency-free Python control plane with offline unit tests.
+- A private, read-only HTTP report portal with login, coverage/deferred evidence, and Markdown,
+  JSON, SARIF and ZIP downloads through an existing Nginx gateway.
 
 Multi-model agreement is only corroboration. It never promotes a finding without code-path,
 trigger, impact, proof and reachability evidence.
@@ -167,13 +169,17 @@ enabled for new, independently verified and production-reachable High/Critical f
 The default deployment targets one manually operated Linux server, including an ordinary AWS EC2
 instance. A systemd timer starts one constrained Docker container each day, fetches an exact
 java-tron revision into temporary storage, selects one TVM execution facet, and keeps reports locally.
-It requires no AWS-managed build or scheduler services and opens no network port.
+It requires no AWS-managed build or scheduler services. The scanner opens no network port;
+the optional report portal publishes a loopback-only backend behind your existing HTTP gateway.
 
 OpenAI authentication can use a persisted ChatGPT device sign-in or a dedicated API key. ChatGPT
 credentials are kept in a private directory separate from source checkouts and scan reports.
 
 See [single-server deployment](docs/server-deployment.md) for installation, credentials, resource
 limits, retention, acceptance testing and rollback.
+
+See [HTTP report portal](docs/report-web.md) for browser access and report downloads. It has
+separate credentials and mounts only scan reports read-only, never the scanner's model credentials.
 
 The previous [AWS-managed deployment](docs/aws-deployment.md) remains an explicitly optional
 alternative for operators who want CodeBuild/EventBridge/S3. It is not required by the default

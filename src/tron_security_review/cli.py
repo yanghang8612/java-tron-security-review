@@ -166,6 +166,18 @@ def cmd_summary(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_serve(args: argparse.Namespace) -> int:
+    from .report_web import serve
+    return serve(args)
+
+
+def cmd_report_auth(args: argparse.Namespace) -> int:
+    from .report_web import init_auth
+    init_auth(args.auth_file, args.login_file, args.username)
+    print("Report credentials created; password is only in the private login file.")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="jtsr",
@@ -212,6 +224,21 @@ def build_parser() -> argparse.ArgumentParser:
     summary = subparsers.add_parser("summary", help="summarize a completed run directory")
     summary.add_argument("run_dir", type=_path)
     summary.set_defaults(handler=cmd_summary)
+
+    web = subparsers.add_parser("serve", help="serve a private, read-only report portal")
+    web.add_argument("--reports", required=True, type=_path)
+    web.add_argument("--auth-file", required=True, type=_path)
+    web.add_argument("--host", default="127.0.0.1")
+    web.add_argument("--port", type=int, default=8765)
+    web.add_argument("--base-path", default="/security")
+    web.add_argument("--secure-cookie", action="store_true", help="only when the gateway uses HTTPS")
+    web.set_defaults(handler=cmd_serve)
+
+    auth = subparsers.add_parser("report-init-auth", help="generate private report portal credentials")
+    auth.add_argument("--auth-file", required=True, type=_path)
+    auth.add_argument("--login-file", required=True, type=_path)
+    auth.add_argument("--username", default="reviewer")
+    auth.set_defaults(handler=cmd_report_auth)
     return parser
 
 

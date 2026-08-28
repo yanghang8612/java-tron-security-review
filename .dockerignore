@@ -9,3 +9,8 @@ __pycache__
 *.tfvars
 var
 tests
+.env
+deploy/server/jtsr.env
+deploy/server/report-web.env
+**/report-web-auth.json
+**/report-web-login.txt

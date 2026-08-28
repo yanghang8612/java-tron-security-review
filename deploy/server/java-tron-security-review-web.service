@@ -1,0 +1,25 @@
+[Unit]
+Description=Private read-only TVM security report portal
+After=docker.service network.target
+Requires=docker.service
+StartLimitInterval=60
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=root
+Group=root
+EnvironmentFile=/etc/java-tron-security-review/report-web.env
+ExecStart=/usr/local/libexec/java-tron-security-review/run-report-web
+ExecStop=-/usr/bin/docker stop -t 10 java-tron-security-review-web
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

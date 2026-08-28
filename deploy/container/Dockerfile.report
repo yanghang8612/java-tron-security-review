@@ -1,0 +1,6 @@
+# Reuse the locally installed, pinned scanner runtime; do not rebuild or retag the scanner.
+ARG JTSR_BASE_IMAGE=java-tron-security-review:local
+FROM ${JTSR_BASE_IMAGE}
+COPY src /opt/jtsr/src
+USER 10001:10001
+CMD ["jtsr", "serve", "--host", "0.0.0.0", "--reports", "/scan/reports", "--auth-file", "/run/report-auth.json"]

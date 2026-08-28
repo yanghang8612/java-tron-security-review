@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>TVM · 安全审查报告</title>
+  <meta name="description" content="私有、只读的 TVM 每日安全审查报告门户">
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="assets/style.css">
+  <script src="assets/app.js" defer></script>
+</head>
+<body>
+  <header class="topbar"><a class="brand" href="./"><span class="mark">T</span> TVM <span class="brand-sub">SECURITY REVIEW</span></a><span class="readonly">只读报告门户</span></header>
+  <main>
+    <section id="login" class="login-card" hidden>
+      <p class="eyebrow">PRIVATE WORKSPACE</p><h1>安全审查，<br>从证据开始。</h1>
+      <p class="muted">登录查看每日 TVM 深度分析、覆盖记录与待验证线索。</p>
+      <form id="login-form">
+        <label>账号<input name="username" autocomplete="username" required maxlength="64"></label>
+        <label>密码<input name="password" type="password" autocomplete="current-password" required maxlength="512"></label>
+        <button type="submit" class="primary">登录报告系统</button>
+        <p id="login-error" class="error" role="alert"></p>
+      </form>
+      <p class="small muted">HTTP 连接不加密，请仅在受控网络中使用。</p>
+    </section>
+    <section id="workspace" hidden>
+      <div class="page-heading"><div><p class="eyebrow">DAILY TVM ANALYSIS</p><h1>安全审查报告</h1><p class="muted">沿执行路径深入分析，以运行时可达性和独立验证为依据。</p></div><div class="actions"><button id="refresh">刷新</button><button id="logout" class="quiet">退出登录</button></div></div>
+      <div class="notice">模型发现是待核验的安全假设。覆盖不完整 ≠ 没有风险；未发现问题 ≠ 安全证明。</div>
+      <div id="stats" class="stats"></div>
+      <div class="section-heading"><h2>运行记录</h2><span id="page-info" class="small muted"></span></div>
+      <div id="run-list" class="run-list"></div>
+      <div class="pagination"><button id="previous">上一页</button><button id="next">下一页</button></div>
+      <section id="detail" class="detail" hidden aria-live="polite"></section>
+    </section>
+    <p id="global-error" class="error" role="alert"></p>
+    <p id="loading" class="muted">正在连接报告服务…</p>
+  </main>
+  <footer>TVM SECURITY REVIEW <span>报告仅供授权内部审查 · 不触发扫描或修改源代码</span></footer>
+</body>
+</html>
