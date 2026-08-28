@@ -1,0 +1,22 @@
+{
+  "source": "triage-tvm-example/results/coverage.json",
+  "item": {
+    "id": "candidate-example-001",
+    "reason": "此条目仅用于界面测试。尚缺生产环境可达性证据，需要人工核验；不是已确认漏洞。",
+    "paths": ["example/src/ExampleVM.java:120-138"],
+    "surfaceIds": ["example-call-flow"],
+    "candidate": {
+      "candidateId": "candidate-example-001",
+      "identity": {"title": "演示线索：跨模块调用后的状态需要进一步核验", "anchor": "ExampleVM.execute"},
+      "summary": "在 **调用流程** 的上下游交互中，`ExampleVM.execute` 的状态边界需要进一步核验。此内容是合成的测试数据。",
+      "attacker": "待确认入口及调用前提；不对真实项目作安全结论。",
+      "violatedInvariant": "示例约束：失败调用前后的状态应保持一致。",
+      "sourceLocations": [{"path": "example/src/ExampleVM.java", "startLine": 120, "endLine": 138}, "example/src/ExampleState.java:42"],
+      "evidence": ["静态阅读发现两个模块使用了不同的状态来源。", "需要补充测试以确认调用失败后的实际行为。"],
+      "counterEvidence": ["现有入口可能已对前置条件进行限制。", "相关提案可能使旧行为在当前部署中不可达。"],
+      "preliminaryAssessments": {"sourceSeverity": "high", "deploymentAdjustedSeverity": "unknown", "confidence": "尚未验证", "reachability": "需要确认提案生效后的真实调用路径。"},
+      "remediation": "先补充回归测试和生产可达性证据，再决定是否需要修改代码。",
+      "taxonomy": {"category": "示例分类", "cwe": ["CWE-example"]}
+    }
+  }
+}

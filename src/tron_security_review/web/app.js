@@ -42,7 +42,6 @@ async function loadRuns() {
   } catch (err) {error(err);} finally {$("loading").hidden = true;}
 }
 function section(parent, title) { const node = el("section", null, "detail-section"); node.append(el("h3", title)); parent.append(node); return node; }
-function text(value) { return typeof value === "string" ? value : JSON.stringify(value, null, 2); }
 function markdown(parent, content) {
   // Deliberately small renderer: no HTML, images, active links, or embedded content.
   let pre = null, list = null;
@@ -66,20 +65,27 @@ async function loadDetail(id) {
     const meta = el("div", null, "metadata");
     for (const [key, value] of [["扫描范围", data.scopes.join(" · ") || "见报告"], ["目标版本", data.revision || "未记录"], ["开始 / 完成", date(data.created_at) + " → " + date(data.completed_at)], ["模型 / 估算用量", data.models.join(" · ") + " / " + money(data.estimated_cost)]]) {const item = el("div"); item.append(el("span", key), document.createTextNode(value)); meta.append(item);} panel.append(meta);
     for (const warning of data.warnings) panel.append(el("p", warning, "error"));
+    const filter = el("div", null, "finding-filter"), searchLabel = el("label", "筛选发现与线索"), search = el("input"), count = el("span", "", "small muted");
+    search.id = "finding-search"; search.type = "search"; search.placeholder = "搜索标题、文件、证据或编号"; searchLabel.htmlFor = search.id;
+    count.setAttribute("role", "status"); filter.append(searchLabel, search, count); panel.append(filter);
+    const searchable = [];
     const findings = section(panel, "发现 · " + (data.finding_count ?? "未知"));
-    for (const group of data.finding_groups) {const card = el("article", null, "finding"); const first = group.occurrences?.[0] || {}; card.append(el("strong", first.title || group.fingerprint || "未命名发现"), el("p", "严重性: " + (first.severity || "待确认") + " · 独立模型佐证: " + (group.corroborated_by_multiple_profiles ? "有（仍需人工确认）" : "未记录")), el("p", "审查配置: " + (group.profiles || []).join(" · "))); findings.append(card);}
+    data.finding_groups.forEach((group, index) => {const card = ReportView.group(group, index + 1, path => download(id, path)); findings.append(card); searchable.push([card, JSON.stringify(group).toLowerCase()]);});
     if (!data.finding_groups.length) findings.append(el("div", data.finding_count === 0 ? "本次尚无正式发现。请继续查看覆盖缺口与待验证线索，这不代表已证明安全。" : "没有可读取的发现汇总，不能据此判断风险。", "empty"));
     const deferred = section(panel, "待验证线索 · " + data.deferred.length);
-    for (const entry of data.deferred) {const item = entry.item || {}, card = el("article", null, "deferred"); card.append(el("strong", item.id || item.candidate?.candidateId || "待验证项"), el("p", item.reason || text(item)), el("p", entry.source, "small muted")); if (item.candidate) card.append(el("p", text(item.candidate))); deferred.append(card);}
+    data.deferred.forEach((entry, index) => {const card = ReportView.deferred(entry, index + 1); deferred.append(card); searchable.push([card, JSON.stringify(entry).toLowerCase()]);});
     if (!data.deferred.length) deferred.append(el("div", "覆盖文件中未记录待验证线索。", "empty"));
+    const noMatch = el("p", "没有匹配的发现或线索。清空搜索可恢复全部条目。", "empty"); noMatch.hidden = true; panel.append(noMatch);
+    const applyFilter = () => {const query = search.value.trim().toLowerCase(); let visible = 0; for (const [card, text] of searchable) {card.hidden = !text.includes(query); if (!card.hidden) visible++;} count.textContent = "显示 " + visible + " / " + searchable.length + " 条"; noMatch.hidden = !query || visible > 0;};
+    search.addEventListener("input", applyFilter); applyFilter();
     const coverage = section(panel, "覆盖记录 · " + data.coverage.length);
-    for (const item of data.coverage) {const node = el("details", null, "coverage-entry"); node.append(el("summary", (item.document.completeness || "未知") + " · " + item.path), el("pre", JSON.stringify(item.document, null, 2))); coverage.append(node);}
+    for (const item of data.coverage) {const node = el("details", null, "coverage-entry"), body = el("div", null, "coverage-body"); const complete = {complete: "覆盖完整", partial: "覆盖不完整"}[item.document.completeness] || "覆盖状态待核验"; node.append(el("summary", complete + " · " + item.path)); ReportView.structured(body, item.document); node.append(body); coverage.append(node);}
     const files = section(panel, "报告文件"), viewer = el("div", null, "viewer"); viewer.hidden = true;
     for (const item of data.artifacts) {
       const row = el("div", null, "artifact"), actions = el("div", null, "actions"); row.append(el("span", item.path + " · " + (item.size / 1024).toFixed(1) + " KB", "artifact-name"));
       if (item.available) {
         const view = el("button", "阅读"), link = el("a", "下载"); link.href = download(id, item.path); link.download = item.path.split("/").pop();
-        view.addEventListener("click", async () => {view.disabled = true; error(null); try {const response = await fetch(link.href, {credentials: "same-origin", cache: "no-store"}); if (response.status === 401) showLogin(); if (!response.ok) throw new Error("读取报告失败 (" + response.status + ")"); const content = await response.text(); if (selected !== id) return; viewer.replaceChildren(el("h3", item.path)); if (item.path.endsWith(".md")) markdown(viewer, content); else viewer.append(el("pre", content)); viewer.hidden = false; viewer.scrollIntoView({behavior: "smooth", block: "start"});} catch (err) {error(err);} finally {view.disabled = false;}});
+        view.addEventListener("click", async () => {view.disabled = true; error(null); try {const response = await fetch(link.href, {credentials: "same-origin", cache: "no-store"}); if (response.status === 401) showLogin(); if (!response.ok) throw new Error("读取报告失败 (" + response.status + ")"); const content = await response.text(); if (selected !== id || request !== detailRequest) return; viewer.replaceChildren(el("h3", item.path)); if (item.path.endsWith(".md")) markdown(viewer, content); else if (item.path.endsWith(".json") || item.path.endsWith(".sarif")) ReportView.artifact(viewer, item.path, content); else viewer.append(el("pre", content)); viewer.hidden = false; viewer.scrollIntoView({behavior: "smooth", block: "start"});} catch (err) {error(err);} finally {view.disabled = false;}});
         actions.append(view, link);
       } else actions.append(el("span", "超过在线大小限制", "muted"));
       row.append(actions); files.append(row);

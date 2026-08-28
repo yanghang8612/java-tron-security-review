@@ -19,6 +19,8 @@ import time
 from urllib.parse import parse_qs, unquote, urlsplit
 import zipfile
 
+from .artifacts import finding_fingerprint, finding_list
+
 NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,159}\Z")
 FILE_LIMIT = 8 * 1024 * 1024
 ARCHIVE_LIMIT = 64 * 1024 * 1024
@@ -235,10 +237,36 @@ class ReportStore:
         except (OSError, ValueError):
             revision = None
         groups = []
+        # Resolve details from enumerated, allowlisted report files only. Never open
+        # the model-controlled absolute `source` paths stored in the aggregate.
+        finding_index = {}
+        for artifact in artifacts:
+            path = artifact["path"]
+            if artifact["available"] and path.endswith("/results/findings.json"):
+                for finding in finding_list(self.document(run_id, path)):
+                    key = (path.split("/", 1)[0], finding_fingerprint(finding))
+                    finding_index.setdefault(key, []).append((path, finding))
         for group in _list(_dict(self.document(run_id, "aggregate.json")).get("finding_groups")):
             if isinstance(group, dict):
+                occurrences = []
+                for value in _list(group.get("occurrences")):
+                    if not isinstance(value, dict):
+                        continue
+                    occurrence = dict(value)
+                    profile, fingerprint = value.get("profile"), group.get("fingerprint")
+                    matches = finding_index.get((profile, fingerprint), []) if isinstance(profile, str) and isinstance(fingerprint, str) else []
+                    source = value.get("source")
+                    if isinstance(source, str) and source:
+                        matches = [(path, finding) for path, finding in matches
+                                   if source == path or source.endswith("/" + run_id + "/" + path)]
+                    if len(matches) == 1:
+                        occurrence.update(artifact_path=matches[0][0], finding=matches[0][1])
+                    else:
+                        occurrence.update(artifact_path=None, finding=None,
+                                          detail_warning="未能唯一匹配原始发现文件；请查看原始报告")
+                    occurrences.append(occurrence)
                 groups.append({**group, "profiles": _list(group.get("profiles")),
-                               "occurrences": [v for v in _list(group.get("occurrences")) if isinstance(v, dict)]})
+                               "occurrences": occurrences})
         return {**summary, "revision": revision, "artifacts": artifacts,
                 "finding_groups": groups,
                 "coverage": coverages, "deferred": deferred}
@@ -447,6 +475,7 @@ class ReportHandler(BaseHTTPRequestHandler):
         if route == "/api/health":
             return self.respond(200, {"ok": True})
         static = {"/": ("index.html", "text/html; charset=utf-8"),
+                  "/assets/finding-view.js": ("finding-view.js", "text/javascript; charset=utf-8"),
                   "/assets/app.js": ("app.js", "text/javascript; charset=utf-8"),
                   "/assets/style.css": ("style.css", "text/css; charset=utf-8")}
         if route in static:

@@ -4,6 +4,8 @@ import io
 import json
 import os
 from pathlib import Path
+import shutil
+import subprocess
 import tempfile
 import threading
 import unittest
@@ -12,6 +14,7 @@ from urllib.parse import quote
 import zipfile
 
 from tron_security_review.report_web import Auth, ReportServer, ReportStore, allowed_artifact, init_auth
+from tron_security_review.artifacts import aggregate_run
 
 ROOT = Path(__file__).resolve().parents[1]
 RUN = "20260827T182332Z-daily-tvm-test"
@@ -130,6 +133,56 @@ class ReportStoreTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 self.store.archive(RUN)
 
+    def test_finding_details_are_joined_to_allowlisted_source(self):
+        path = "triage-tvm-calls/results/findings.json"
+        finding = {"id": "example", "title": "Synthetic review example", "severity": "high",
+                   "description": "Example only", "evidence": ["Evidence A"],
+                   "preliminaryAssessments": {"reachability": "Unverified"}}
+        self.write(path, {"results": {"findings": [finding]}})
+        self.write("aggregate.json", aggregate_run(self.run))
+        occurrence = self.store.detail(RUN)["finding_groups"][0]["occurrences"][0]
+        self.assertEqual(occurrence["finding"], finding)
+        self.assertEqual(occurrence["artifact_path"], path)
+
+    def test_finding_details_never_follow_aggregate_source(self):
+        finding = {"id": "example", "title": "Example"}
+        self.write("triage-tvm-calls/results/findings.json", [finding])
+        aggregate = aggregate_run(self.run)
+        for source in ("/private/credentials.json", "../another-run/triage-tvm-calls/results/findings.json"):
+            aggregate["finding_groups"][0]["occurrences"][0]["source"] = source
+            self.write("aggregate.json", aggregate)
+            occurrence = self.store.detail(RUN)["finding_groups"][0]["occurrences"][0]
+            self.assertIsNone(occurrence["finding"])
+            self.assertTrue(occurrence["detail_warning"])
+
+    def test_missing_or_ambiguous_details_keep_summary_without_guessing(self):
+        finding = {"id": "example", "title": "Example"}
+        path = "triage-tvm-calls/results/findings.json"
+        self.write(path, [finding])
+        aggregate = aggregate_run(self.run)
+        self.write("aggregate.json", aggregate)
+        (self.run / path).unlink()
+        occurrence = self.store.detail(RUN)["finding_groups"][0]["occurrences"][0]
+        self.assertEqual(occurrence["title"], "Example")
+        self.assertIsNone(occurrence["finding"])
+        self.write(path, [finding, {**finding, "evidence": "Different record"}])
+        self.assertIsNone(self.store.detail(RUN)["finding_groups"][0]["occurrences"][0]["finding"])
+
+    def test_fallback_attempts_match_their_own_finding_file(self):
+        for attempt in ("model-a", "model-b"):
+            path = f"verifier-tvm/candidates/001-example/{attempt}/results/findings.json"
+            (self.run / path).parent.mkdir(parents=True)
+            self.write(path, [{"id": "same-id", "title": "Example", "evidence": attempt}])
+        self.write("aggregate.json", aggregate_run(self.run))
+        occurrences = self.store.detail(RUN)["finding_groups"][0]["occurrences"]
+        self.assertEqual([item["finding"]["evidence"] for item in occurrences], ["model-a", "model-b"])
+
+    def test_malformed_fingerprint_and_profile_do_not_crash_details(self):
+        self.write("aggregate.json", {"finding_group_count": 1, "finding_groups": [
+            {"fingerprint": [], "occurrences": [{"profile": {}, "title": "Malformed"}]}]})
+        occurrence = self.store.detail(RUN)["finding_groups"][0]["occurrences"][0]
+        self.assertIsNone(occurrence["finding"])
+
 
 class ReportHTTPTests(ReportStoreTests):
     def setUp(self):
@@ -215,10 +268,26 @@ class ReportHTTPTests(ReportStoreTests):
             init_auth(self.auth_file, self.login_file)
 
     def test_frontend_never_injects_model_html(self):
-        source = (ROOT / "src/tron_security_review/web/app.js").read_text()
-        self.assertNotIn("innerHTML", source)
-        self.assertNotIn("insertAdjacentHTML", source)
-        self.assertIn("textContent", source)
+        for name in ("app.js", "finding-view.js"):
+            source = (ROOT / "src/tron_security_review/web" / name).read_text()
+            self.assertNotIn("innerHTML", source)
+            self.assertNotIn("insertAdjacentHTML", source)
+            self.assertIn("textContent", source)
+
+    def test_readable_view_asset_is_served_with_script_policy(self):
+        status, headers, body = self.request("/assets/finding-view.js")
+        self.assertEqual(status, 200)
+        self.assertIn("text/javascript", headers["Content-Type"])
+        self.assertIn(b"const ReportView", body)
+        self.assertIn("script-src 'self'", headers["Content-Security-Policy"])
+
+
+class ReportFrontendTests(unittest.TestCase):
+    @unittest.skipUnless(shutil.which("node"), "Node is required for frontend regression tests")
+    def test_readable_finding_renderer(self):
+        result = subprocess.run(["node", "--test", str(ROOT / "tests/web/finding-view.test.cjs")],
+                                capture_output=True, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
 
 
 class ReportDeploymentTests(unittest.TestCase):
