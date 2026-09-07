@@ -78,13 +78,17 @@ jobs:
       - name: Install Codex Security outside the checkouts
         run: |
           set -euo pipefail
-          npm install \
+          install -d "$RUNNER_TEMP/codex-security"
+          cp security-system/deploy/container/package.json "$RUNNER_TEMP/codex-security/package.json"
+          cp security-system/deploy/container/package-lock.json "$RUNNER_TEMP/codex-security/package-lock.json"
+          npm ci \
             --prefix "$RUNNER_TEMP/codex-security" \
+            --include=optional \
             --ignore-scripts \
             --no-audit \
-            --no-fund \
-            @openai/codex-security@0.1.25
+            --no-fund
           "$RUNNER_TEMP/codex-security/node_modules/.bin/codex-security" --version
+          "$RUNNER_TEMP/codex-security/node_modules/.bin/codex" --version
 
       - name: Install control plane
         run: python3 -m pip install --no-deps -e security-system

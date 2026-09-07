@@ -15,7 +15,8 @@ root host wrapper, protected by flock
         |
         v
 one non-root Docker container (dedicated uid 10001, no capabilities, bounded CPU/RAM,
-the seccomp profile pinned to Codex Security 0.1.25)
+the seccomp profile pinned to Codex Security 0.1.25, with its Codex runtime compatibility override
+pinned to 0.153.4)
         |
         +--> daily-tvm triage profile
         +--> daily-tvm independent verifier profile

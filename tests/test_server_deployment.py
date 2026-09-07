@@ -119,6 +119,12 @@ class ServerDeploymentTests(unittest.TestCase):
             lock["packages"]["node_modules/@openai/codex-security"]["version"],
             expected,
         )
+        expected_codex = package["overrides"]["@openai/codex"]
+        self.assertEqual(package["overrides"]["@openai/codex-sdk"], expected_codex)
+        self.assertEqual(
+            lock["packages"]["node_modules/@openai/codex"]["version"],
+            expected_codex,
+        )
         dockerfile = (container / "Dockerfile").read_text(encoding="utf-8")
         campaign = (ROOT / ".github/workflows/security-campaign.yml").read_text(
             encoding="utf-8"
@@ -127,8 +133,11 @@ class ServerDeploymentTests(unittest.TestCase):
             encoding="utf-8"
         )
         self.assertIn(f"ARG CODEX_SECURITY_VERSION={expected}", dockerfile)
-        self.assertIn(f'CODEX_SECURITY_VERSION: "{expected}"', campaign)
-        self.assertIn(f"@openai/codex-security@{expected}", reusable)
+        self.assertIn(f"ARG CODEX_VERSION={expected_codex}", dockerfile)
+        for workflow in (campaign, reusable):
+            self.assertIn("deploy/container/package-lock.json", workflow)
+            self.assertIn("npm ci", workflow)
+            self.assertIn('node_modules/.bin/codex" --version', workflow)
 
     def test_chatgpt_auth_is_persistent_and_separate_from_reports(self) -> None:
         runner = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")

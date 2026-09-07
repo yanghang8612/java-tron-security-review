@@ -48,13 +48,19 @@ Candidates beyond the configured count remain partial coverage and keep exit `2`
 The default triage uses Astra/xhigh with a six-hour hard process-group timeout, a ten-minute
 first-progress timeout and a thirty-minute no-progress timeout. Verification uses Astra/high and
 bounds at most eight candidates to one shared 60-minute window each, including a same-model retry.
-The pinned Codex Security CLI, and the latest checked 0.1.25 release, does not provide an Astra
+The pinned Codex Security CLI 0.1.25 does not provide an Astra
 cost model: adding `--max-cost` makes it exit before a model request. The configured 200 USD triage,
 30 USD candidate and 240 USD stage values are retained as visible operator references, but run
 manifests mark them as unenforced and the wrapper omits the incompatible flag. Do not treat them as
 hard billing caps. GPT-5.5 fallback also omits `--max-cost`; it is limited to three candidates and
 thirty minutes per candidate at `high` effort. None of these values are ChatGPT subscription
 charges or quota balances.
+
+Codex Security 0.1.25 normally resolves Codex 0.149.1, which the Astra service rejects as too old.
+The runtime lockfile therefore applies a narrow compatibility override to the official stable Codex
+CLI and SDK 0.153.4. Container builds verify all three exact versions, and both CI workflows install
+from that same lockfile. Remove the override once a stable Codex Security release directly requires
+an Astra-compatible runtime.
 
 Advisory workflows use `continue-on-error` so partial results can still be exported. Review
 `coverage.json`; a partial or unknown coverage value is never a clean bill of health.
