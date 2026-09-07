@@ -68,8 +68,8 @@ class PlannerTests(unittest.TestCase):
         plan = build_plan(self.config, "daily-tvm", day_of_year=1)
         triage, verifier = [job.profile for job in plan.jobs]
         self.assertEqual((triage.model, triage.effort, triage.max_cost),
-                         ("gpt-5.6-sol", "xhigh", 200.0))
-        self.assertEqual((verifier.model, verifier.effort), ("gpt-5.6-sol", "high"))
+                         ("gpt-6-astra", "xhigh", 200.0))
+        self.assertEqual((verifier.model, verifier.effort), ("gpt-6-astra", "high"))
         self.assertTrue(verifier.per_finding)
         self.assertEqual(verifier.candidate_source_profile, "triage")
 

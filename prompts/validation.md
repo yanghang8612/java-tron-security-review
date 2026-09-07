@@ -18,7 +18,9 @@ DynamicPropertiesStore, or ForkController:
 3. require evidence for the effective gate value on the stated production network and node role;
 4. suppress the candidate when a fixing proposal, hard fork, release, or later guard was active
    before the behavior was production-reachable;
-5. defer the candidate when activation or release evidence is unavailable.
+5. suppress a gate-off candidate when activation/release evidence is absent and no independent
+   source evidence shows that current production execution can select that branch;
+6. defer only a source-backed plausibly current path with one precise unresolved external fact.
 
 Use these dispositions:
 
@@ -28,8 +30,14 @@ Use these dispositions:
 - `suppressed`: the candidate is a duplicate, false positive, fixed-before-activation behavior,
   intentionally retained historical behavior, or otherwise not production-reachable.
 - `not_applicable`: the candidate does not apply to this target revision or selected scope.
-- `deferred`: material evidence is missing, including unresolved activation, release, caller,
-  runtime, or historical-replay reachability. Deferred candidates must make coverage partial.
+- `deferred`: a plausibly current source-to-impact path is established but one precise activation,
+  release, caller or runtime fact is unresolved. Historical-only, pre-activation, test-only and
+  fixed-before-activation behavior is `suppressed`, not deferred. Deferred candidates make
+  coverage partial.
+
+Before returning, purge any `reportable` or `deferred` item whose only demonstrated trigger is a
+disabled proposal, pre-fork rule, startup default, manual test setting, old snapshot, or historical
+replay. Do not preserve those as candidate-shaped warnings.
 
 Do not upgrade severity solely because the affected component is consensus-critical. State the
 specific evidence, counterevidence or proof gap, remaining uncertainty, and any defensive artifact

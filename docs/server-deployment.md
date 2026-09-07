@@ -39,15 +39,16 @@ of year selects the facet deterministically; use `jtsr plan --mode daily-tvm` to
 `--scope <facet-id>` to reproduce one explicitly.
 
 The mandatory evidence gate rejects proposal-disabled, pre-hard-fork, historical-replay and
-test-only branches from formal findings unless current production reachability is established.
+test-only branches from findings and candidate-shaped deferred work unless a plausibly current
+production path is independently established.
 
-The default profile pair uses `gpt-5.6-sol` at `xhigh` for discovery with a 200 USD estimated-cost
-ceiling, then gives each triage candidate its own `gpt-5.6-sol` at `high` skeptical-verifier
+The default profile pair uses `gpt-6-astra` at `xhigh` for discovery with a 200 USD estimated-cost
+ceiling, then gives each triage candidate its own `gpt-6-astra` at `high` skeptical-verifier
 invocation. This assigns more reasoning to cross-module discovery while keeping verification
 focused on one candidate; the evidence and production-reachability gates remain unchanged.
 Only explicitly recognized usage/rate limits or model-availability errors are retried with
 `gpt-5.5` at `high`. Safety refusals and local budget/time limits never trigger model fallback.
-At most eight candidates are selected in severity order. Each GPT-5.6 primary
+At most eight candidates are selected in severity order. Each Astra primary
 attempt is bounded at 30 USD and 60 minutes, so its 240 USD worst case remains within the 240 USD
 verifier stage ceiling, in addition to the 200 USD triage ceiling. Codex Security does not currently
 support estimated-cost limiting for GPT-5.5, so at most three fallback candidates are allowed and

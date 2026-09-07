@@ -29,10 +29,16 @@
       <div class="page-heading"><div><p class="eyebrow">DAILY TVM ANALYSIS</p><h1>安全审查报告</h1><p class="muted">沿执行路径深入分析，以运行时可达性和独立验证为依据。</p></div><div class="actions"><button id="refresh">刷新</button><button id="logout" class="quiet">退出登录</button></div></div>
       <div class="notice">模型发现是待核验的安全假设。覆盖不完整 ≠ 没有风险；未发现问题 ≠ 安全证明。</div>
       <div id="stats" class="stats"></div>
-      <div class="section-heading"><h2>运行记录</h2><span id="page-info" class="small muted"></span></div>
-      <div id="run-list" class="run-list"></div>
-      <div class="pagination"><button id="previous">上一页</button><button id="next">下一页</button></div>
-      <section id="detail" class="detail" hidden aria-live="polite"></section>
+      <div class="report-layout">
+        <aside class="run-panel" aria-label="运行记录导航">
+          <div class="section-heading"><h2>运行记录</h2><span id="page-info" class="small muted"></span></div>
+          <div id="run-list" class="run-list"></div>
+          <div class="pagination"><button id="previous">上一页</button><button id="next">下一页</button></div>
+        </aside>
+        <section id="detail" class="detail" aria-live="polite">
+          <div class="detail-placeholder"><p class="eyebrow">REPORT READER</p><h2>选择一条运行记录</h2><p class="muted">报告将在这里显示。最新记录会在页面打开时自动选中。</p></div>
+        </section>
+      </div>
     </section>
     <p id="global-error" class="error" role="alert"></p>
     <p id="loading" class="muted">正在连接报告服务…</p>

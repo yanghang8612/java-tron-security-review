@@ -323,6 +323,18 @@ class ReportHTTPTests(ReportStoreTests):
 
 
 class ReportFrontendTests(unittest.TestCase):
+    def test_report_reader_uses_two_pane_navigation_and_keeps_raw_data_secondary(self):
+        web = ROOT / "src/tron_security_review/web"
+        html = (web / "index.html").read_text(encoding="utf-8")
+        script = (web / "app.js").read_text(encoding="utf-8")
+        style = (web / "style.css").read_text(encoding="utf-8")
+        self.assertIn('class="report-layout"', html)
+        self.assertIn('class="run-panel"', html)
+        self.assertIn('"detail-nav"', script)
+        self.assertIn('"正式发现"', script)
+        self.assertIn("grid-template-columns: 350px minmax(0, 1fr)", style)
+        self.assertIn(".raw-data", style)
+
     @unittest.skipUnless(shutil.which("node"), "Node is required for frontend regression tests")
     def test_readable_finding_renderer(self):
         result = subprocess.run(["node", "--test", str(ROOT / "tests/web/finding-view.test.cjs")],

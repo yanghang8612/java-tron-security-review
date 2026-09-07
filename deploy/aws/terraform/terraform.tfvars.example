@@ -14,7 +14,7 @@ scan_provider = "openai"
 
 # Optional: route inference through Amazon Bedrock and the CodeBuild IAM role.
 # scan_provider       = "amazon-bedrock"
-# scan_model_override = "openai.gpt-5.6-sol"
+# scan_model_override = "openai.gpt-6-astra"
 # bedrock_model_arns = [
 #   "REPLACE_WITH_APPROVED_BEDROCK_MODEL_OR_INFERENCE_PROFILE_ARN",
 # ]

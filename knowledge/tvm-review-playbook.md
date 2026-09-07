@@ -40,9 +40,16 @@ branches may be consensus-critical historical behavior. The mere ability to invo
 in a unit test is not an attack path.
 
 If the repository and supplied knowledge do not establish the effective value for the target
-network, reject the item as a formal finding and record the missing chain-parameter/activation
-evidence in coverage. Never substitute a default value, a test fixture or branch existence for
-live activation evidence.
+network, reject the item as a finding and as a candidate-shaped deferred item unless source-backed
+evidence independently establishes a current production path. Record the branch as an ordinary
+checked/negative coverage note. Never substitute a default value, a test fixture or branch
+existence for live activation evidence.
+
+For every proposed finding or deferred candidate, require an activation packet containing the
+proposal or fork identifier, effective height/time, first shipped release, effective chain value at
+the target revision, and a current attacker-controlled new-transaction/block path. If a fix shipped
+and activated before that path became live, the review is complete for this hypothesis: it is a
+negative result and must not remain in `deferred`.
 
 ## 3. Cross-module invariants
 
@@ -67,5 +74,6 @@ A formal finding needs all of the following:
 - a violated invariant with concrete attacker benefit or network consequence; and
 - a focused test/reproducer or a precise explanation of the remaining proof gap.
 
-Otherwise record it as a rejected hypothesis, negative result or deferred edge in coverage. A
+Otherwise record it as a rejected hypothesis or negative result in ordinary coverage prose.
+Reserve `deferred` for a source-backed plausibly current path with one precise missing proof. A
 small, auditable list of deeply supported findings is the objective.

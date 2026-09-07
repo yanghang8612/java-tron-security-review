@@ -1,7 +1,7 @@
 [profiles.triage]
 description = "High-reasoning discovery across each scoped execution flow"
 provider = "openai"
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 effort = "xhigh"
 scan_mode = "standard"
 modes = ["pr", "daily-tvm"]
@@ -12,7 +12,7 @@ prompt = "prompts/scan.md"
 [profiles.primary]
 description = "Primary investigator for nightly and manual reviews"
 provider = "openai"
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 effort = "xhigh"
 scan_mode = "standard"
 modes = ["nightly", "manual"]
@@ -23,7 +23,7 @@ prompt = "prompts/scan.md"
 [profiles.verifier]
 description = "Independent falsification pass for high-risk changes"
 provider = "openai"
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 effort = "high"
 scan_mode = "standard"
 modes = ["pr", "daily-tvm", "nightly"]
@@ -46,7 +46,7 @@ fallback_timeout_minutes = 30.0
 [profiles.deep]
 description = "Rotating deep review of one critical subsystem"
 provider = "openai"
-model = "gpt-5.6-sol"
+model = "gpt-6-astra"
 effort = "max"
 scan_mode = "deep"
 modes = ["weekly", "release"]

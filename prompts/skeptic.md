@@ -11,11 +11,14 @@ checks and has a concrete invariant violation and reproducible consequence.
 For proposal, hard-fork, `VMConfig`, snapshot or legacy-branch candidates, independently trace the
 gate from proposal/fork storage through configuration loading to the exact execution context.
 Distinguish current HEAD execution from historical replay and tests that manually disable a gate.
-Reject the candidate only with evidence that the affected branch was fixed before activation,
-is required only for historical consensus replay, or a concrete guard prevents the claimed impact.
-If evidence that the target production network can select the branch for a new transaction/block
-is missing, record `insufficient_evidence`, not a rejection and not a formal vulnerability.
-Explicitly list what release, activation, configuration or impact evidence is still needed.
+Reject the candidate when the affected branch was fixed before activation, exists only for
+historical consensus replay, is only selected by tests/startup defaults, or a concrete guard
+prevents the claimed impact. Require a proposal ID/version, effective height/time, shipped release,
+effective chain value and current new-transaction/block path. If the candidate supplies none of
+that activation evidence and its only trigger is a false/legacy gate, treat the missing evidence as
+proof that the candidate failed admission rather than preserving it as an open vulnerability.
+Use `insufficient_evidence` only when source evidence already establishes a plausibly current path
+and a specific remaining fact would decide it. Explicitly list that fact.
 `Reachability unverified` must remain an evidence gap, never a formal vulnerability.
 
 For TVM candidates, reconstruct the whole selected execution slice: entry point, cross-module

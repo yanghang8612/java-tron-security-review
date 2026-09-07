@@ -197,7 +197,7 @@ class RunnerTests(unittest.TestCase):
                 scan_dir.mkdir(parents=True, exist_ok=True)
                 model = command[command.index("--model") + 1]
                 if scan_dir.parent.name == "triage-tvm-opcode-dispatch":
-                    self.assertEqual(model, "gpt-5.6-sol")
+                    self.assertEqual(model, "gpt-6-astra")
                     self.assertEqual(command[command.index("--effort") + 1], "xhigh")
                     self.assertEqual(command[command.index("--max-cost") + 1], "200.0")
                     (scan_dir / "findings.json").write_text(
@@ -221,7 +221,7 @@ class RunnerTests(unittest.TestCase):
                         "Estimated cost: $1.0 of $200.0 limit\n", encoding="utf-8"
                     )
                     return 0
-                if model == "gpt-5.6-sol":
+                if model == "gpt-6-astra":
                     self.assertEqual(command[command.index("--effort") + 1], "high")
                     stderr_path.write_text(
                         ("Estimated cost: $2.0 of $30.0 limit\n" if known_usage else "") + failure_message,
@@ -269,7 +269,7 @@ class RunnerTests(unittest.TestCase):
                     "Error: rate_limit_exceeded\n", failure_code
                 )
                 self.assertEqual([result.model for result in results], [
-                    "gpt-5.6-sol", "gpt-5.6-sol", "gpt-5.5",
+                    "gpt-6-astra", "gpt-6-astra", "gpt-5.5",
                 ])
                 self.assertFalse(results[1].counts_toward_exit)
                 self.assertTrue(results[2].counts_toward_exit)
@@ -302,7 +302,7 @@ class RunnerTests(unittest.TestCase):
     def test_stalled_review_has_one_budgeted_retry_then_one_fallback(self):
         with unittest.mock.patch("tron_security_review.runner.time.sleep"):
             results, manifest, queue = self._simulate_verifier_failure("orchestrator timeout", termination="no_progress_timeout")
-        self.assertEqual([r.model for r in results], ["gpt-5.6-sol"] * 3 + ["gpt-5.5"])
+        self.assertEqual([r.model for r in results], ["gpt-6-astra"] * 3 + ["gpt-5.5"])
         self.assertEqual([r.counts_toward_exit for r in results], [True, False, False, True])
         self.assertEqual(results[2].command[results[2].command.index("--max-cost") + 1], "28.0")
         self.assertEqual(results[2].timeout_seconds, 2995)

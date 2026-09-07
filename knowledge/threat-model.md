@@ -19,9 +19,10 @@ For each finding, determine where evidence permits:
 - one of `production-reachable`, `not production-reachable`, or `reachability unverified`.
 
 If code never shipped or never became active, it is not an effective production vulnerability.
-When release or activation evidence is incomplete, do not assume production impact and do not put
-the hypothesis in the formal finding list. Preserve it as deferred coverage with the exact evidence
-needed to resolve it.
+When release or activation evidence is incomplete, do not assume production impact. A legacy or
+gate-off branch is a checked negative result, not a candidate-shaped deferred item, unless source
+evidence independently establishes a plausibly current production path and identifies one precise
+external fact needed to resolve it.
 
 The presence of a pre-activation branch is expected in consensus software that must replay old
 blocks. Tests that explicitly set a gate to zero and defaults used before chain state is loaded do
@@ -147,8 +148,9 @@ execution context, and must include:
 - confidence and coverage limitations; and
 - production reachability status.
 
-`not production-reachable` and `reachability unverified` items belong in coverage/deferred work,
-not in `findings.json`.
+`not production-reachable` items belong in ordinary negative coverage notes. `reachability
+unverified` may enter deferred work only for a source-backed plausibly current path with a precise
+missing proof. Neither belongs in `findings.json`.
 
 High and Critical candidates remain unconfirmed until independently reviewed by a human. Automated
 systems must not publish vulnerability details to public issues or pull-request comments.

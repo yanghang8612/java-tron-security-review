@@ -7,7 +7,8 @@ let page = 1, selected = null, listRequest = 0, detailRequest = 0;
 function el(tag, text, className) { const node = document.createElement(tag); if (text != null) node.textContent = String(text); if (className) node.className = className; return node; }
 function date(value) { if (!value) return "—"; const parsed = new Date(value); return Number.isNaN(parsed.getTime()) ? String(value) : parsed.toLocaleString("zh-CN", {hour12: false}); }
 function money(value) { return typeof value === "number" ? "$" + value.toFixed(4) : "未知"; }
-function showLogin() { $("workspace").hidden = true; $("login").hidden = false; $("detail").replaceChildren(); selected = null; detailRequest++; }
+function detailPlaceholder() { const box = el("div", null, "detail-placeholder"); box.append(el("p", "REPORT READER", "eyebrow"), el("h2", "选择一条运行记录"), el("p", "报告将在这里显示。最新记录会在页面打开时自动选中。", "muted")); return box; }
+function showLogin() { $("workspace").hidden = true; $("login").hidden = false; $("detail").replaceChildren(detailPlaceholder()); selected = null; detailRequest++; }
 async function api(path, options) {
   const response = await fetch(base + "/api" + path, {credentials: "same-origin", cache: "no-store", ...options});
   if (response.status === 401 && path !== "/login") showLogin();
@@ -27,6 +28,7 @@ async function loadRuns() {
     if (request !== listRequest) return;
     $("login").hidden = true; $("workspace").hidden = false;
     const runs = data.runs, latest = runs[0];
+    if (selected && !runs.some((run) => run.id === selected)) selected = null;
     $("stats").replaceChildren(stat("归档运行", data.total, "按 UTC 运行编号倒序"), stat("本页最近一次", latest ? statuses[latest.status] : "暂无记录", latest ? date(latest.completed_at || latest.created_at) : "等待首次扫描"), stat("本页最近发现", latest?.finding_count ?? "未知", "模型假设，需人工确认"), stat("本页最近估算用量", money(latest?.estimated_cost), "模型估算值，非订阅账单"));
     $("page-info").textContent = "第 " + page + " / " + Math.max(1, Math.ceil(data.total / data.page_size)) + " 页 · 时间按浏览器时区显示";
     $("previous").disabled = page <= 1; $("next").disabled = page * data.page_size >= data.total;
@@ -34,14 +36,18 @@ async function loadRuns() {
     for (const run of runs) {
       const row = el("button", null, "run-row" + (selected === run.id ? " selected" : ""));
       row.type = "button"; row.setAttribute("aria-label", "查看运行 " + run.id);
-      const title = el("div"); title.append(el("div", (run.execution_kind === "verification_only" ? "补充复核 · " : "") + date(run.created_at), "run-title"), el("div", run.id, "run-id"));
-      row.append(title, badge(run.status), el("span", run.models.join(" · ") || "模型待记录", "run-model"), el("span", (run.finding_count ?? "?") + " 发现", "metric"), el("span", money(run.estimated_cost), "metric"));
+      const heading = el("div", null, "run-row-head");
+      heading.append(el("div", (run.execution_kind === "verification_only" ? "补充复核 · " : "") + date(run.created_at), "run-title"), badge(run.status));
+      const metrics = el("div", null, "run-metrics"); metrics.append(el("span", (run.finding_count ?? "?") + " 个发现", "metric"), el("span", money(run.estimated_cost), "metric"));
+      row.append(heading, el("div", run.id, "run-id"), el("span", run.models.join(" · ") || "模型待记录", "run-model"), metrics);
       row.addEventListener("click", () => {for (const child of list.children) child.classList.remove("selected"); row.classList.add("selected"); loadDetail(run.id);}); list.append(row);
     }
     if (!runs.length) list.append(el("div", "还没有运行记录。每日扫描生成报告后，会自动出现在这里。", "empty"));
+    if (!selected && runs.length) {list.firstElementChild?.classList.add("selected"); loadDetail(runs[0].id);}
   } catch (err) {error(err);} finally {$("loading").hidden = true;}
 }
-function section(parent, title) { const node = el("section", null, "detail-section"); node.append(el("h3", title)); parent.append(node); return node; }
+function section(parent, title, id) { const node = el("section", null, "detail-section"); if (id) node.id = id; node.append(el("h3", title)); parent.append(node); return node; }
+function navButton(label, target) { const button = el("button", label); button.type = "button"; button.addEventListener("click", () => $(target)?.scrollIntoView({behavior: "smooth", block: "start"})); return button; }
 function markdown(parent, content) {
   // Deliberately small renderer: no HTML, images, active links, or embedded content.
   let pre = null, list = null;
@@ -60,8 +66,8 @@ async function loadDetail(id) {
   try {
     const data = await api("/runs/" + encodeURIComponent(id)); if (request !== detailRequest) return;
     const panel = $("detail"); panel.replaceChildren(); panel.hidden = false;
-    const header = el("div", null, "detail-header"), title = el("div"), archive = el("a", "下载完整报告 ZIP", "download"); archive.href = download(id);
-    title.append(el("p", "RUN DETAIL", "eyebrow"), el("h2", "执行记录与分析证据"), el("p", id, "detail-id"), badge(data.status)); header.append(title, archive); panel.append(header);
+    const header = el("div", null, "detail-header"), title = el("div"), archive = el("a", "下载完整报告 ZIP", "download"); archive.href = download(id); header.id = "report-summary";
+    title.append(el("p", "REPORT READER", "eyebrow"), el("h2", "报告详情"), el("p", id, "detail-id"), badge(data.status)); header.append(title, archive); panel.append(header);
     const meta = el("div", null, "metadata");
     for (const [key, value] of [["扫描范围", data.scopes.join(" · ") || "见报告"], ["目标版本", data.revision || "未记录"], ["开始 / 完成", date(data.created_at) + " → " + date(data.completed_at)], ["模型 / 估算用量", data.models.join(" · ") + " / " + money(data.estimated_cost)]]) {const item = el("div"); item.append(el("span", key), document.createTextNode(value)); meta.append(item);} panel.append(meta);
     for (const warning of data.warnings) panel.append(el("p", warning, "error"));
@@ -71,31 +77,35 @@ async function loadDetail(id) {
     if (links.children.length) panel.append(links);
     if (data.execution_kind === "verification_only") panel.append(el("p", "本次仅复核原扫描的已有候选，不代表重新完成全部范围扫描；原报告与覆盖缺口保留不变。", "notice"));
     if (data.retry_of_run_id) panel.append(el("p", "仅重试前次复核失败的候选；已完成结论保留在前次报告：" + data.retry_of_run_id, "notice"));
+    const navigation = el("nav", null, "detail-nav"); navigation.setAttribute("aria-label", "报告内容导航");
+    navigation.append(navButton("概览", "report-summary"), navButton("独立复核", "report-reviews"), navButton("正式发现", "report-findings"), navButton("待验证线索", "report-deferred"), navButton("覆盖记录", "report-coverage"), navButton("报告文件", "report-files")); panel.append(navigation);
     const filter = el("div", null, "finding-filter"), searchLabel = el("label", "筛选发现与线索"), search = el("input"), count = el("span", "", "small muted");
     search.id = "finding-search"; search.type = "search"; search.placeholder = "搜索标题、文件、证据或编号"; searchLabel.htmlFor = search.id;
     count.setAttribute("role", "status"); filter.append(searchLabel, search, count); panel.append(filter);
     const searchable = [];
+    let hasReviewSection = false;
     for (const queue of data.verification || []) {
       const records = queue.document.candidates || [];
-      const reviews = section(panel, "逐条独立复核 · " + records.length);
+      const reviews = section(panel, "逐条独立复核 · " + records.length, hasReviewSection ? null : "report-reviews"); hasReviewSection = true;
       const counts = {}; for (const record of records) counts[record.status || "not_reviewed"] = (counts[record.status || "not_reviewed"] || 0) + 1;
       reviews.append(el("p", Object.entries(counts).map(([status, count]) => (ReportView.reviewStatuses[status] || "记录待核验") + " " + count).join(" / ") || "本轮没有进入复核队列的候选", "muted"));
       if (queue.document.error) reviews.append(el("p", queue.document.error, "error"));
       for (const error of queue.document.intake_errors || []) reviews.append(el("p", error, "error"));
       records.forEach((record, index) => {const card = ReportView.verification(record, index + 1); reviews.append(card); searchable.push([card, JSON.stringify(record).toLowerCase()]);});
     }
-    const findings = section(panel, "发现 · " + (data.finding_count ?? "未知"));
+    if (!hasReviewSection) section(panel, "逐条独立复核 · 0", "report-reviews").append(el("p", "本轮没有进入复核队列的候选。", "muted"));
+    const findings = section(panel, "正式发现 · " + (data.finding_count ?? "未知"), "report-findings");
     data.finding_groups.forEach((group, index) => {const card = ReportView.group(group, index + 1, path => download(id, path)); findings.append(card); searchable.push([card, JSON.stringify(group).toLowerCase()]);});
     if (!data.finding_groups.length) findings.append(el("div", data.finding_count === 0 ? "本次尚无正式发现。请继续查看覆盖缺口与待验证线索，这不代表已证明安全。" : "没有可读取的发现汇总，不能据此判断风险。", "empty"));
-    const deferred = section(panel, "待验证线索 · " + data.deferred.length);
+    const deferred = section(panel, "待验证线索 · " + data.deferred.length, "report-deferred");
     data.deferred.forEach((entry, index) => {const card = ReportView.deferred(entry, index + 1); deferred.append(card); searchable.push([card, JSON.stringify(entry).toLowerCase()]);});
     if (!data.deferred.length) deferred.append(el("div", "覆盖文件中未记录待验证线索。", "empty"));
     const noMatch = el("p", "没有匹配的发现或线索。清空搜索可恢复全部条目。", "empty"); noMatch.hidden = true; panel.append(noMatch);
     const applyFilter = () => {const query = search.value.trim().toLowerCase(); let visible = 0; for (const [card, text] of searchable) {card.hidden = !text.includes(query); if (!card.hidden) visible++;} count.textContent = "显示 " + visible + " / " + searchable.length + " 条"; noMatch.hidden = !query || visible > 0;};
     search.addEventListener("input", applyFilter); applyFilter();
-    const coverage = section(panel, "覆盖记录 · " + data.coverage.length);
+    const coverage = section(panel, "覆盖记录 · " + data.coverage.length, "report-coverage");
     for (const item of data.coverage) {const node = el("details", null, "coverage-entry"), body = el("div", null, "coverage-body"); const complete = {complete: "覆盖完整", partial: "覆盖不完整"}[item.document.completeness] || "覆盖状态待核验"; node.append(el("summary", complete + " · " + item.path)); ReportView.structured(body, item.document); node.append(body); coverage.append(node);}
-    const files = section(panel, "报告文件"), viewer = el("div", null, "viewer"); viewer.hidden = true;
+    const files = section(panel, "报告文件", "report-files"), viewer = el("div", null, "viewer"); viewer.hidden = true;
     for (const item of data.artifacts) {
       const row = el("div", null, "artifact"), actions = el("div", null, "actions"); row.append(el("span", item.path + " · " + (item.size / 1024).toFixed(1) + " KB", "artifact-name"));
       if (item.available) {

@@ -20,9 +20,10 @@ against the target revision. Focus on java-tron's real security boundaries:
 
 ## Current-rule admission gate
 
-Do not turn intentionally retained pre-activation behavior into a current vulnerability. Before a
-candidate involving `VMConfig`, `DynamicPropertiesStore`, `ForkController`, a proposal, a hard-fork
-height, a version switch, or a legacy compatibility branch can enter `findings.json`:
+Do not turn intentionally retained pre-activation behavior into a current vulnerability or a
+candidate-shaped deferred item. Before an issue involving `VMConfig`, `DynamicPropertiesStore`,
+`ForkController`, a proposal, a hard-fork height, a version switch, or a legacy compatibility
+branch can enter `findings.json` **or** `coverage.json.deferred`:
 
 1. identify the exact gate and trace how its value flows from proposal/fork state or configuration
    into the affected execution;
@@ -31,16 +32,30 @@ height, a version switch, or a legacy compatibility branch can enter `findings.j
 3. inspect proposal application, dynamic-property loading, fork-controller logic, release history
    and relevant tests rather than inferring reachability from the existence of an `if` branch;
 4. establish that an attacker can make the affected production network and node role execute the
-   vulnerable branch for a new transaction or block; and
-5. check whether a proposal, hard fork, release or later guard fixed the behavior before it became
+   vulnerable branch for a new transaction or block;
+5. identify the proposal ID/version gate, its approved and effective height or time, the shipped
+   release containing the behavior, and the effective chain value used at the target revision; and
+6. check whether a proposal, hard fork, release or later guard fixed the behavior before it became
    active on that network.
 
 A test that sets a gate to zero proves only branch semantics. A default value of zero proves only
 startup/default behavior. Historical replay reachability is not current exploitability when the
-legacy rule is required to reproduce already-finalized blocks. If activation or release evidence
-is missing, do **not** emit a formal finding with `reachability unverified`; record the hypothesis
-and missing evidence in coverage/deferred work instead. Formal findings must be
-`production-reachable` for the stated network, role and execution context.
+legacy rule is required to reproduce already-finalized blocks. A branch fixed before its proposal
+or fork activated is an expected historical state, not an unresolved candidate. Record it only as
+a checked negative result in the coverage narrative; do not give it a candidate ID, severity,
+attack hypothesis, or entry in `deferred`.
+
+Missing activation evidence does not make a legacy branch plausibly current. Exclude it from both
+formal findings and candidate-shaped deferred work unless source-backed evidence independently
+shows that a current production execution can still select the branch and exactly one named
+external fact is needed to finish verification. Formal findings must be `production-reachable`
+for the stated network, role and execution context.
+
+Before finalizing the artifacts, run a legacy-candidate purge: for every proposed finding and
+deferred candidate, state the current effective gate value and activation evidence. Remove entries
+whose only trigger is gate-off, pre-activation, a test fixture, startup fallback, old snapshot, or
+historical replay. A current regression behind an already-active gate remains eligible when the
+target revision itself reintroduces the unsafe path.
 
 ## TVM execution-flow method
 
@@ -56,7 +71,8 @@ across every supplied cross-module path. Build one end-to-end flow before search
 - inspect callers, callees and tests that can prove or falsify the invariant.
 
 Prefer one deeply demonstrated cross-module invariant violation to several local code smells.
-Record the traced flow, branches checked, negative results and deferred edges in coverage.
+Record the traced flow, branches checked, negative results and genuinely current deferred edges in
+coverage. Keep historical/fixed negative results out of `coverage.json.deferred`.
 
 Do not report a broad hardening suggestion as a vulnerability. For every candidate, establish:
 
@@ -69,5 +85,6 @@ Do not report a broad hardening suggestion as a vulnerability. For every candida
    evidence.
 
 Code merely present on a branch is not proof that it shipped or was active. Prefer a small number
-of well-supported findings over many speculative candidates. Record unverified hypotheses,
-deferred surfaces and negative results in coverage, not in the formal finding list.
+of well-supported findings over many speculative candidates. Use `deferred` only for a
+source-backed, plausibly current attack path with a precise missing proof; otherwise record the
+work as a negative result or ordinary coverage note, not as a vulnerability candidate.

@@ -45,8 +45,8 @@ Startup/preflight and reconnect heartbeats do not reset the progress watchdog. S
 [candidate verification](candidate-verification.md) for retry selection and diagnostic artifacts.
 Candidates beyond the configured count remain partial coverage and keep exit `2`.
 
-The default triage uses Sol/xhigh with a 200 USD estimated-cost ceiling. Verification uses Sol/high
-and bounds at most eight GPT-5.6 candidates (including their same-model retry) to 30 USD and 60 minutes
+The default triage uses Astra/xhigh with a 200 USD estimated-cost ceiling. Verification uses Astra/high
+and bounds at most eight Astra candidates (including their same-model retry) to 30 USD and 60 minutes
 each, keeping the 240 USD primary worst case within the verifier stage ceiling of 240 USD. Codex
 Security does not currently provide estimated-cost limiting for GPT-5.5. The fallback therefore
 omits `--max-cost`, is limited to three candidates per run, and has a hard thirty-minute
@@ -82,8 +82,9 @@ Model profiles and prompts are versioned evidence. Record their exact versions i
 manifest when comparing scan quality over time.
 
 Formal findings require current production reachability. Proposal-disabled, pre-hard-fork,
-historical-replay and test-only branches are coverage/deferred notes unless the reviewer proves
-the stated production network can select them for a new transaction or block.
+historical-replay and test-only branches are ordinary negative coverage notes. They must not enter
+candidate-shaped deferred work unless source evidence independently establishes a plausibly
+current path and names one precise missing proof.
 
 ## Single-server runbook
 

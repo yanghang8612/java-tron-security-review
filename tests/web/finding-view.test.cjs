@@ -34,6 +34,7 @@ test("deferred card makes missing proof clear and keeps JSON collapsed", () => {
   assert.notEqual(raw.open, true);
   assert.deepEqual(JSON.parse(raw.children[1].textContent), fixture.item);
   assert.equal(nodes.filter(n => n.tagName === "pre").length, 1);
+  assert.ok(nodes.some(n => n.className.includes("key-evidence")));
 });
 
 test("legacy strings, missing candidate and unknown fields remain readable", () => {

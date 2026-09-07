@@ -14,7 +14,7 @@ const ReportView = (() => {
     source: "来源", sourcelocations: "代码位置", locations: "代码位置", location: "代码位置",
     path: "文件", paths: "涉及文件", file: "文件", filepath: "文件", uri: "文件路径",
     line: "行号", startline: "起始行", endline: "结束行", linestart: "起始行", lineend: "结束行",
-    column: "列号", symbol: "符号", function: "函数", snippet: "代码片段",
+    column: "列号", symbol: "符号", function: "函数", role: "路径角色", snippet: "代码片段",
     content: "内容", text: "说明", result: "结果", expected: "预期行为", actual: "实际行为",
     steps: "步骤", reproducer: "复现记录", reproduction: "复现记录", poc: "验证样例",
     identity: "关联标识", candidateid: "候选编号", findingid: "发现编号", id: "编号",
@@ -148,10 +148,13 @@ const ReportView = (() => {
     if (options.warning) article.append(node("p", options.warning, "error"));
     block(article, "问题概述", model.overview);
     block(article, "代码位置", model.locations, "code-locations");
-    if (model.sections.length) {
+    const priority = new Set(["影响与触发条件", "验证与生产可达性"]);
+    for (const [title, content] of model.sections.filter(([title]) => priority.has(title))) block(article, title, content, "key-evidence");
+    const supporting = model.sections.filter(([title]) => !priority.has(title));
+    if (supporting.length) {
       const analysis = node("details", null, "finding-analysis");
-      analysis.append(node("summary", "展开分析与证据 · " + model.sections.length + " 个分区"));
-      for (const [title, content] of model.sections) block(analysis, title, content);
+      analysis.append(node("summary", "查看完整证据 · " + supporting.length + " 个分区"));
+      for (const [title, content] of supporting) block(analysis, title, content);
       article.append(analysis);
     }
     if (options.source) article.append(node("p", "来源：" + options.source, "finding-source"));

@@ -9,14 +9,14 @@ SARIF, and keeps scan state outside the target worktree. It is advisory and read
 
 ## What is implemented
 
-- PR diff planning with Sol/xhigh discovery and isolated, Sol/high per-finding falsification for
+- PR diff planning with Astra/xhigh discovery and isolated, Astra/high per-finding falsification for
   High/Critical candidates.
 - A GPT-5.5/high fallback only for explicitly recognized usage/rate limits or model availability
   failures. Safety refusals, local budget/time limits and unknown errors do not trigger fallback.
 - One-facet-per-day TVM execution-flow reviews, nightly incremental scans and a seven-domain weekly
   deep-scan rotation.
-- A hard production-reachability admission gate that rejects pre-activation, historical-replay and
-  test-only proposal branches from the formal finding list.
+- A hard production-reachability admission gate that keeps pre-activation, fixed-before-activation,
+  historical-replay and test-only proposal branches out of findings and candidate-shaped deferred work.
 - Release/manual full-repository scan modes.
 - Mandatory release/runtime reachability policy for every finding.
 - Environment filtering so the scanner does not inherit unrelated CI credentials.
@@ -27,8 +27,8 @@ SARIF, and keeps scan state outside the target worktree. It is advisory and read
   private reports, retention and failure webhook.
 - An optional AWS-managed CodeBuild/EventBridge deployment for operators who explicitly want it.
 - Dependency-free Python control plane with offline unit tests.
-- A private, read-only HTTP report portal with login, coverage/deferred evidence, and Markdown,
-  JSON, SARIF and ZIP downloads through an existing Nginx gateway.
+- A private, read-only HTTP report portal with a two-pane report reader, readable evidence cards,
+  coverage/deferred evidence, and Markdown, JSON, SARIF and ZIP downloads through Nginx.
 
 Multi-model agreement is only corroboration. It never promotes a finding without code-path,
 trigger, impact, proof and reachability evidence.

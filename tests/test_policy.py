@@ -22,6 +22,10 @@ class PolicyTests(unittest.TestCase):
         self.assertIn("Do not edit scan-manifest.json", validation_prompt)
         self.assertIn("keep its repository worktree read-only", scan_prompt)
         self.assertIn("scan output directory is authorized and", scan_prompt)
+        self.assertIn("legacy-candidate purge", scan_prompt)
+        self.assertIn("candidate-shaped deferred item", scan_prompt)
+        self.assertIn("fixed before activation", verifier_prompt)
+        self.assertIn("Historical-only, pre-activation", validation_prompt)
 
     def test_tvm_playbook_is_a_required_knowledge_base(self) -> None:
         config = load_config(ROOT)
