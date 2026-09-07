@@ -43,6 +43,8 @@ class InvocationResult:
     duration_seconds: float | None = None
     first_response_timeout_seconds: float | None = None
     idle_timeout_seconds: float | None = None
+    configured_max_cost: float | None = None
+    cost_limit_enforced: bool = False
 
 
 def default_run_id(mode: str) -> str:
@@ -186,6 +188,18 @@ def _append_option(command: list[str], flag: str, value: object | None) -> None:
         command.extend([flag, str(value)])
 
 
+# The pinned Codex Security CLI (and 0.1.25, checked on 2026-09-07) accepts
+# Astra as a model but has no Astra entry in its cost model. Passing
+# --max-cost therefore aborts before the first model request. Keep this
+# explicit and versioned rather than presenting a configured dollar reference
+# as an enforced limit.
+_CLI_COST_LIMIT_UNSUPPORTED = {("openai", "gpt-6-astra")}
+
+
+def _cli_cost_limit_supported(provider: str, model: str) -> bool:
+    return (provider, model) not in _CLI_COST_LIMIT_UNSUPPORTED
+
+
 def build_scan_command(
     config: AppConfig,
     job: PlanJob,
@@ -247,7 +261,8 @@ def build_scan_command(
     max_cost = (
         job.profile.max_cost if max_cost_override is None else max_cost_override
     ) if include_max_cost else None
-    _append_option(command, "--max-cost", max_cost)
+    if _cli_cost_limit_supported(provider, model):
+        _append_option(command, "--max-cost", max_cost)
     configured_paths = job.paths if paths_override is None else paths_override
     if configured_paths:
         if paths_override is None:
@@ -576,6 +591,9 @@ def _invoke_scan(
         paths_override=paths_override,
         include_max_cost=include_max_cost,
     )
+    configured_max_cost = (
+        job.profile.max_cost if max_cost_override is None else max_cost_override
+    ) if include_max_cost else None
     returncode = _run_command(
         command,
         environment,
@@ -632,6 +650,8 @@ def _invoke_scan(
         duration_seconds=execution.get("duration_seconds"),
         first_response_timeout_seconds=(job.profile.first_response_timeout_minutes or 0) * 60 or None,
         idle_timeout_seconds=(job.profile.idle_timeout_minutes or 0) * 60 or None,
+        configured_max_cost=configured_max_cost,
+        cost_limit_enforced="--max-cost" in command and not dry_run,
     )
 
 
@@ -679,6 +699,10 @@ def _run_per_finding_job(
         "source_profile": profile.candidate_source_profile,
         "stage_max_cost": profile.max_cost,
         "per_finding_max_cost": profile.per_finding_max_cost,
+        "cost_limit_enforced": _cli_cost_limit_supported(
+            provider_override or profile.provider,
+            model_override or profile.model,
+        ),
         "per_finding_timeout_minutes": profile.per_finding_timeout_minutes,
         "first_response_timeout_minutes": profile.first_response_timeout_minutes,
         "idle_timeout_minutes": profile.idle_timeout_minutes,
@@ -783,12 +807,22 @@ def _run_per_finding_job(
         candidate_attempts = [("primary", primary)]
         candidate_record["effective_attempt"] = "primary"
         recovery = _recovery_reason(primary)
-        # One same-model retry shares the original candidate's measured budget
-        # and wall clock. Unknown usage reserves the whole budget, never zero.
+        # One same-model retry shares the original candidate's wall clock and,
+        # where the CLI supports it, measured cost budget. Astra currently has
+        # no CLI cost model, so its retry is time-bounded only.
         if recovery in {"network_error", "first_response_timeout", "no_progress_timeout"} and profile.max_retries:
-            remaining_cost = max(0, (profile.per_finding_max_cost or 0) - primary.estimated_cost) if primary.estimated_cost is not None else 0
+            cost_limit_supported = _cli_cost_limit_supported(effective_provider, primary_model)
+            remaining_cost = (
+                max(0, (profile.per_finding_max_cost or 0) - primary.estimated_cost)
+                if cost_limit_supported and primary.estimated_cost is not None
+                else None
+            )
             remaining_time = max(0, (profile.per_finding_timeout_minutes or 0) * 60 - primary.duration_seconds - 5) if primary.duration_seconds is not None else 0
-            if remaining_cost > 0 and remaining_time >= (profile.first_response_timeout_minutes or 5) * 60:
+            cost_budget_available = (
+                not cost_limit_supported
+                or (remaining_cost is not None and remaining_cost > 0)
+            )
+            if cost_budget_available and remaining_time >= (profile.first_response_timeout_minutes or 5) * 60:
                 candidate_record.update(retry_reason=recovery, effective_attempt="retry", retry_count=1)
                 write_json(manifest_path, manifest)
                 time.sleep(5)
@@ -799,14 +833,16 @@ def _run_per_finding_job(
                     environment=environment, auth=auth, cli_bin=cli_bin,
                     base_commit=base_commit, head_commit=head_commit, dry_run=False,
                     provider_override=provider_override, model_override=model_override,
-                    max_cost_override=remaining_cost, paths_override=candidate_paths or None,
+                    max_cost_override=remaining_cost,
+                    paths_override=candidate_paths or None,
+                    include_max_cost=cost_limit_supported,
                     timeout_seconds=remaining_time, job_id=f"{job.id}/candidate-{index:03d}/retry",
                 )
                 candidate_record["retry"] = asdict(retry)
                 candidate_attempts.append(("retry", retry))
                 effective = retry
             else:
-                candidate_record["retry_skipped_reason"] = "unknown_usage_or_candidate_budget_exhausted"
+                candidate_record["retry_skipped_reason"] = "candidate_time_or_cost_budget_exhausted"
 
         fallback_reason = _recovery_reason(effective)
         candidate_record["fallback_reason"] = fallback_reason
@@ -998,6 +1034,7 @@ def run_plan(
                 dry_run=dry_run,
                 provider_override=provider_override,
                 model_override=model_override,
+                timeout_seconds=(job.profile.max_time_hours or 0) * 3600 or None,
             )
         )
 

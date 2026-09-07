@@ -37,10 +37,11 @@ cross-module callers and sinks so the review follows a complete execution flow i
 an isolated directory. Set `JTSR_SCOPE` only to force a specific facet for reproduction.
 
 The default OpenAI configuration uses `gpt-6-astra` at `xhigh` for the first investigation and
-separate `gpt-6-astra` at `high` invocations for per-candidate falsification. Triage has a 200 USD
-estimated-cost threshold; primary verification has up to eight 30 USD attempts (240 USD total).
-Availability-only GPT-5.5 fallbacks are additionally bounded by count and time, not cost. These
-thresholds are not forecasts or hard whole-run billing caps. See [operations](operations.md).
+separate `gpt-6-astra` at `high` invocations for per-candidate falsification. The pinned Codex
+Security CLI has no Astra cost model, so the configured dollar values are budget references rather
+than enforced thresholds. Triage is stopped after six hours; primary verification has at most
+eight candidates and a shared 60-minute window per candidate. Availability-only GPT-5.5 fallbacks
+are bounded by count and time. See [operations](operations.md).
 A result is still a hypothesis until the repository's evidence and reachability policy is satisfied.
 
 ## Provisioning

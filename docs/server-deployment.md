@@ -42,19 +42,20 @@ The mandatory evidence gate rejects proposal-disabled, pre-hard-fork, historical
 test-only branches from findings and candidate-shaped deferred work unless a plausibly current
 production path is independently established.
 
-The default profile pair uses `gpt-6-astra` at `xhigh` for discovery with a 200 USD estimated-cost
-ceiling, then gives each triage candidate its own `gpt-6-astra` at `high` skeptical-verifier
-invocation. This assigns more reasoning to cross-module discovery while keeping verification
-focused on one candidate; the evidence and production-reachability gates remain unchanged.
+The default profile pair uses `gpt-6-astra` at `xhigh` for discovery, then gives each triage
+candidate its own `gpt-6-astra` at `high` skeptical-verifier invocation. This assigns more
+reasoning to cross-module discovery while keeping verification focused on one candidate; the
+evidence and production-reachability gates remain unchanged.
 Only explicitly recognized usage/rate limits or model-availability errors are retried with
 `gpt-5.5` at `high`. Safety refusals and local budget/time limits never trigger model fallback.
-At most eight candidates are selected in severity order. Each Astra primary
-attempt is bounded at 30 USD and 60 minutes, so its 240 USD worst case remains within the 240 USD
-verifier stage ceiling, in addition to the 200 USD triage ceiling. Codex Security does not currently
-support estimated-cost limiting for GPT-5.5, so at most three fallback candidates are allowed and
-each is stopped after thirty minutes. These are CLI estimated-cost and wall-clock controls even
-when ChatGPT authentication is selected; they do not describe the ChatGPT subscription bill or
-guarantee complete coverage.
+At most eight candidates are selected in severity order. Discovery has a six-hour process-group
+limit; each Astra primary candidate has a shared 60-minute window including its same-model retry.
+The currently pinned Codex Security CLI, including its latest checked release 0.1.25, has no Astra
+cost model and rejects `--max-cost` before the first model request. The configured 200/30/240 USD
+values are therefore retained only as operator budget references and are explicitly recorded as
+unenforced; wall-clock, progress and candidate-count limits are the active controls. GPT-5.5
+fallbacks are limited to three candidates and thirty minutes each. These limits do not describe
+the ChatGPT subscription bill or guarantee complete coverage.
 
 ## Host prerequisites
 

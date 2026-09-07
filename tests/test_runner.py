@@ -199,7 +199,8 @@ class RunnerTests(unittest.TestCase):
                 if scan_dir.parent.name == "triage-tvm-opcode-dispatch":
                     self.assertEqual(model, "gpt-6-astra")
                     self.assertEqual(command[command.index("--effort") + 1], "xhigh")
-                    self.assertEqual(command[command.index("--max-cost") + 1], "200.0")
+                    self.assertNotIn("--max-cost", command)
+                    self.assertEqual(timeout_seconds, 21600)
                     (scan_dir / "findings.json").write_text(
                         json.dumps(
                             {
@@ -223,6 +224,7 @@ class RunnerTests(unittest.TestCase):
                     return 0
                 if model == "gpt-6-astra":
                     self.assertEqual(command[command.index("--effort") + 1], "high")
+                    self.assertNotIn("--max-cost", command)
                     stderr_path.write_text(
                         ("Estimated cost: $2.0 of $30.0 limit\n" if known_usage else "") + failure_message,
                         encoding="utf-8",
@@ -304,19 +306,19 @@ class RunnerTests(unittest.TestCase):
             results, manifest, queue = self._simulate_verifier_failure("orchestrator timeout", termination="no_progress_timeout")
         self.assertEqual([r.model for r in results], ["gpt-6-astra"] * 3 + ["gpt-5.5"])
         self.assertEqual([r.counts_toward_exit for r in results], [True, False, False, True])
-        self.assertEqual(results[2].command[results[2].command.index("--max-cost") + 1], "28.0")
+        self.assertNotIn("--max-cost", results[2].command)
         self.assertEqual(results[2].timeout_seconds, 2995)
         self.assertEqual(queue["candidates"][0]["retry_count"], 1)
         self.assertEqual(queue["candidates"][0]["effective_attempt"], "fallback")
         self.assertEqual(queue["fallback_count"], 1)
         self.assertTrue(manifest["partial_coverage"])
 
-    def test_unknown_usage_skips_same_model_retry_without_inventing_zero_cost(self):
+    def test_astra_unknown_usage_retries_within_the_original_time_window(self):
         results, _, queue = self._simulate_verifier_failure("orchestrator timeout", termination="first_response_timeout", known_usage=False)
-        self.assertEqual(len(results), 3)
+        self.assertEqual(len(results), 4)
         self.assertEqual(results[-1].model, "gpt-5.5")
-        self.assertNotIn("retry", queue["candidates"][0])
-        self.assertEqual(queue["candidates"][0]["retry_skipped_reason"], "unknown_usage_or_candidate_budget_exhausted")
+        self.assertIn("retry", queue["candidates"][0])
+        self.assertNotIn("--max-cost", results[2].command)
 
     def test_stall_with_safety_block_never_retries_or_falls_back(self):
         results, _, queue = self._simulate_verifier_failure("content_filter\norchestrator timeout", termination="no_progress_timeout")
@@ -533,6 +535,26 @@ class RunnerTests(unittest.TestCase):
             dry_run=False,
         )
         self.assertEqual(command[command.index("--auth") + 1], "chatgpt")
+        self.assertNotIn("--max-cost", command)
+
+    def test_priced_model_override_keeps_cli_cost_limit(self) -> None:
+        plan = build_plan(self.config, "daily-tvm", day_of_year=1)
+        command = build_scan_command(
+            config=self.config,
+            job=plan.jobs[0],
+            plan=plan,
+            target=self.target,
+            scan_dir=ROOT / "var/test/tvm-priced-results",
+            prompt_path=ROOT / "prompts/scan.md",
+            knowledge_bases=available_knowledge_bases(self.config),
+            auth="chatgpt",
+            cli_bin=None,
+            base_commit=None,
+            head_commit="b" * 40,
+            dry_run=False,
+            model_override="gpt-5.6-sol",
+        )
+        self.assertEqual(command[command.index("--max-cost") + 1], "200.0")
 
     def test_bedrock_override_omits_openai_auth_flag(self) -> None:
         plan = build_plan(self.config, "daily-tvm", day_of_year=1)

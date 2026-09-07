@@ -7,6 +7,9 @@ scan_mode = "standard"
 modes = ["pr", "daily-tvm"]
 minimum_risk = "low"
 max_cost = 200.0
+max_time_hours = 6.0
+first_response_timeout_minutes = 10.0
+idle_timeout_minutes = 30.0
 prompt = "prompts/scan.md"
 
 [profiles.primary]
@@ -18,6 +21,9 @@ scan_mode = "standard"
 modes = ["nightly", "manual"]
 minimum_risk = "low"
 max_cost = 8.0
+max_time_hours = 6.0
+first_response_timeout_minutes = 10.0
+idle_timeout_minutes = 30.0
 prompt = "prompts/scan.md"
 
 [profiles.verifier]

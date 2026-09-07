@@ -174,7 +174,7 @@ def load_config(root: Path | None = None) -> AppConfig:
             idle_timeout_minutes=values.get("idle_timeout_minutes"),
             max_retries=values.get("max_retries", 0),
         )
-        for field in ("max_cost", "per_finding_max_cost", "per_finding_timeout_minutes",
+        for field in ("max_cost", "max_time_hours", "per_finding_max_cost", "per_finding_timeout_minutes",
                       "fallback_timeout_minutes", "first_response_timeout_minutes", "idle_timeout_minutes"):
             value = getattr(profile, field)
             if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0):
