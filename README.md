@@ -84,7 +84,7 @@ discard unrelated work merely to run a scheduled review.
 Run a live local scan after signing in:
 
 ```bash
-npx @openai/codex-security@0.1.20 login
+npx @openai/codex-security@0.1.25 login
 jtsr scan \
   --mode pr \
   --target ../java-tron \

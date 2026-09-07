@@ -1,6 +1,6 @@
 [system]
 name = "java-tron-security-review"
-cli_package = "@openai/codex-security@0.1.20"
+cli_package = "@openai/codex-security@0.1.25"
 default_target = "../java-tron"
 output_root = "var/scans"
 default_auth = "auto"
