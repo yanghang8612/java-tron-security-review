@@ -80,6 +80,28 @@ whose only trigger is gate-off, pre-activation, a test fixture, startup fallback
 historical replay. A current regression behind an already-active gate remains eligible when the
 target revision itself reintroduces the unsafe path.
 
+## Static deployment closure gate
+
+This scheduled job is a source review, not an audit of an unknown operator's live deployment.
+Use checked-in production/default configuration and source-backed role selection as the static
+reachability baseline. Do not make coverage partial merely to request a production deployment
+attestation, remote endpoint inventory, live traffic observation, heap-failure threshold, or
+permission to execute a dynamic proof.
+
+An optional node role, manually enabled service, remote API, command-line override, or nondefault
+configuration is not independently production-reachable just because the source can support it.
+When the checked-in shipped defaults disable that entry point and no supplied configuration proves
+it enabled, remove the item from findings and candidate-shaped deferred work. Record the guarded
+path as a conditional hardening or negative coverage note without a candidate identity. Unknown
+operator overrides are outside this static scan and must not appear in `coverage.openQuestions`.
+
+Only keep a configuration-dependent candidate when the authorized repository or supplied
+knowledge itself proves that the affected production role enables the entry point in its shipped
+configuration. Even then, missing live traffic or a dynamic reproducer is an evidence limitation,
+not incomplete source coverage. If the code-level trigger or concrete impact cannot be established
+without executing application code, suppress the candidate for this run rather than deferring the
+whole scan.
+
 ## TVM execution-flow method
 
 For a daily TVM run, analyze only the orchestrator-selected facet, but follow its calls and effects

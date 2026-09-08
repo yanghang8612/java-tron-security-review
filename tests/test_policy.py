@@ -31,6 +31,11 @@ class PolicyTests(unittest.TestCase):
         self.assertIn("An empty result is valid", scan_prompt)
         self.assertIn("Return validation status `complete`", validation_prompt)
         self.assertIn("must not leave the scan draft unfinished", validation_prompt)
+        self.assertIn("Static deployment closure gate", scan_prompt)
+        self.assertIn("Do not make coverage partial merely to request", scan_prompt)
+        self.assertIn("operator overrides are outside this static scan", scan_prompt)
+        self.assertIn("deployment-only uncertainty", validation_prompt)
+        self.assertIn("dynamic execution is the only way", validation_prompt)
 
     def test_tvm_playbook_requires_final_draft_even_with_zero_findings(self) -> None:
         playbook = (ROOT / "knowledge/tvm-review-playbook.md").read_text(
@@ -39,6 +44,8 @@ class PolicyTests(unittest.TestCase):
         self.assertIn("finish the semantic scan draft", playbook)
         self.assertIn("final submission must use", playbook)
         self.assertIn("zero findings", playbook)
+        self.assertIn("Close deployment-only uncertainty", playbook)
+        self.assertIn("must not make coverage partial", playbook)
 
     def test_tvm_playbook_is_a_required_knowledge_base(self) -> None:
         config = load_config(ROOT)

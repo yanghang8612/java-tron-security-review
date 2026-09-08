@@ -91,3 +91,11 @@ first establish a plausibly current attack path, unavailable proposal values, ac
 release state, or node configuration belong in negative coverage or static-analysis limitations.
 If a real authorized source surface was not reviewed, record partial coverage and finalize the
 draft rather than abandoning it.
+
+Close deployment-only uncertainty the same way. Checked-in shipped defaults and supplied
+production configuration are the static reachability baseline. A production deployment
+attestation, remote endpoint inventory, live workload observation, heap threshold, or dynamic
+proof authorization is outside this source scan and must not make coverage partial. If an optional
+role or remote API is disabled by the shipped defaults and no supplied configuration proves it
+enabled, record a conditional hardening/negative note without a candidate identity. Unknown
+operator overrides do not belong in `deferred` or `openQuestions`.

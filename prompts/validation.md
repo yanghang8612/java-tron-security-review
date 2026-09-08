@@ -46,6 +46,21 @@ Before returning, purge any `reportable` or `deferred` item whose only demonstra
 disabled proposal, pre-fork rule, startup default, manual test setting, old snapshot, or historical
 replay. Do not preserve those as candidate-shaped warnings.
 
+Apply the same rule to deployment-only uncertainty. This is a static source validation, so a
+request for production deployment attestation, endpoint inventory, live workload evidence,
+heap-failure measurement, or permission to execute a dynamic proof is not a reason to return
+`deferred` or partial coverage. Use checked-in shipped defaults and supplied production
+configuration as the reachability baseline. If an optional role, remote API, service, or operator
+override is disabled by those defaults and no supplied configuration proves it enabled, return
+`suppressed` or `not_applicable`; record the condition as a non-candidate limitation. Unknown live
+operator overrides must not become `openQuestions`.
+
+Keep a configuration-dependent candidate only when authorized source or supplied knowledge proves
+that the affected production role enables the entry point in its shipped configuration and the
+source-to-impact path is otherwise established. Inability to run application code does not by
+itself justify deferral. When dynamic execution is the only way to establish the trigger or impact,
+suppress the item for this static run.
+
 When no candidate remains reportable or deferred, return a complete result containing the required
 suppressed/not-applicable dispositions. Do not manufacture an open question or a deferred result
 to avoid a zero-finding scan.

@@ -1,3 +1,3 @@
 """Control plane for scheduled java-tron security reviews."""
 
-__version__ = "0.5.2"
+__version__ = "0.5.3"
