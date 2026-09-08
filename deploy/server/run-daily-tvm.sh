@@ -39,6 +39,7 @@ JTSR_PROVIDER="${JTSR_PROVIDER:-openai}"
 JTSR_AUTH="${JTSR_AUTH:-api-key}"
 JTSR_TARGET_REPOSITORY_URL="${JTSR_TARGET_REPOSITORY_URL:-https://github.com/tronprotocol/java-tron.git}"
 JTSR_TARGET_REF="${JTSR_TARGET_REF:-develop}"
+JTSR_SCOPE="${JTSR_SCOPE:-}"
 JTSR_OUTPUT_ROOT="${JTSR_OUTPUT_ROOT:-/var/lib/java-tron-security-review/scans}"
 JTSR_WORK_ROOT="${JTSR_WORK_ROOT:-/var/lib/java-tron-security-review/work}"
 JTSR_AUTH_ROOT="${JTSR_AUTH_ROOT:-/var/lib/java-tron-security-review/auth}"
@@ -83,6 +84,7 @@ validate_absolute_directory JTSR_AUTH_ROOT "$JTSR_AUTH_ROOT"
 [[ "$JTSR_TARGET_REPOSITORY_URL" == https://* ]] || fail "target repository URL must use HTTPS"
 [[ "$JTSR_TARGET_REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] || fail "target ref contains unsupported characters"
 [[ "$JTSR_TARGET_REF" != *".."* && "$JTSR_TARGET_REF" != *"@{"* ]] || fail "target ref is unsafe"
+[[ -z "$JTSR_SCOPE" || "$JTSR_SCOPE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$ ]] || fail "scope override is unsafe"
 
 if [[ -r /proc/sys/user/max_user_namespaces ]] && \
    [[ "$(cat /proc/sys/user/max_user_namespaces)" == "0" ]]; then
@@ -304,7 +306,11 @@ SCAN_ARGS=(
   --cli-bin /usr/local/bin/codex-security
 )
 SCAN_ARGS+=("${RUNTIME_SCAN_ARGS[@]}")
+if [[ -n "$JTSR_SCOPE" ]]; then
+  SCAN_ARGS+=(--scope "$JTSR_SCOPE")
+fi
 if [[ -n "$JTSR_VERIFY_SOURCE_RUN" ]]; then
+  [[ -z "$JTSR_SCOPE" ]] || fail "verification must use the source run's original scope"
   SCAN_ARGS=(jtsr verify --source-run /scan/source --target /scan/target
     --output-root /scan/output --run-id "$RUN_ID" --cli-bin /usr/local/bin/codex-security)
   SCAN_ARGS+=("${RUNTIME_SCAN_ARGS[@]}")

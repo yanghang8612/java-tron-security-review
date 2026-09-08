@@ -72,6 +72,15 @@ class ServerDeploymentTests(unittest.TestCase):
         self.assertIn("flock -n 9", script)
         self.assertRegex(script, re.compile(r"JTSR_RETENTION_DAYS.*90"))
 
+    def test_daily_runner_allows_a_validated_one_run_scope_override(self) -> None:
+        script = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")
+        environment = (SERVER / "jtsr.env.example").read_text(encoding="utf-8")
+        self.assertIn('JTSR_SCOPE="${JTSR_SCOPE:-}"', script)
+        self.assertIn('SCAN_ARGS+=(--scope "$JTSR_SCOPE")', script)
+        self.assertIn("scope override is unsafe", script)
+        self.assertIn("verification must use the source run's original scope", script)
+        self.assertIn("JTSR_SCOPE=", environment)
+
     def test_daily_runner_supports_git_1_8_3(self) -> None:
         script = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")
         self.assertIn("git_in_target()", script)
