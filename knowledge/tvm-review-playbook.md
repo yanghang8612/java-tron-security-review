@@ -77,3 +77,17 @@ A formal finding needs all of the following:
 Otherwise record it as a rejected hypothesis or negative result in ordinary coverage prose.
 Reserve `deferred` for a source-backed plausibly current path with one precise missing proof. A
 small, auditable list of deeply supported findings is the objective.
+
+## 5. Close the scheduled scan
+
+The daily job is an unattended static scan. Once the selected facet and supplied cross-module
+paths have been reviewed, finish the semantic scan draft even if the result is zero findings.
+Intermediate checkpoints may use `complete: false`; the final submission must use
+`complete: true`. This final-draft marker does not claim that runtime deployment facts were
+observed and does not turn partial source coverage into complete coverage.
+
+Do not leave generic production-state research in `openQuestions`. If source evidence does not
+first establish a plausibly current attack path, unavailable proposal values, activation history,
+release state, or node configuration belong in negative coverage or static-analysis limitations.
+If a real authorized source surface was not reviewed, record partial coverage and finalize the
+draft rather than abandoning it.

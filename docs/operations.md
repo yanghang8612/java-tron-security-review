@@ -65,6 +65,12 @@ an Astra-compatible runtime.
 Advisory workflows use `continue-on-error` so partial results can still be exported. Review
 `coverage.json`; a partial or unknown coverage value is never a clean bill of health.
 
+Scheduled Standard scans explicitly require the model to submit a final semantic draft with
+`complete: true`, including for zero-finding results. This marker means the bounded model turn has
+finished authoring its draft; it is independent of `coverage.completeness`. Missing external
+production facts do not keep an otherwise complete static source review open. Genuine unreviewed
+source surfaces still produce partial coverage and exit `2` after the draft is finalized.
+
 ## Credential isolation
 
 The wrapper creates a minimal child environment. It passes operating-system basics, proxy values,

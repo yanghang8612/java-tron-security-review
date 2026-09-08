@@ -26,6 +26,19 @@ class PolicyTests(unittest.TestCase):
         self.assertIn("candidate-shaped deferred item", scan_prompt)
         self.assertIn("fixed before activation", verifier_prompt)
         self.assertIn("Historical-only, pre-activation", validation_prompt)
+        self.assertIn("A `complete: false` draft is an intermediate checkpoint only", scan_prompt)
+        self.assertIn("top-level `complete: true`", scan_prompt)
+        self.assertIn("An empty result is valid", scan_prompt)
+        self.assertIn("Return validation status `complete`", validation_prompt)
+        self.assertIn("must not leave the scan draft unfinished", validation_prompt)
+
+    def test_tvm_playbook_requires_final_draft_even_with_zero_findings(self) -> None:
+        playbook = (ROOT / "knowledge/tvm-review-playbook.md").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("finish the semantic scan draft", playbook)
+        self.assertIn("final submission must use", playbook)
+        self.assertIn("zero findings", playbook)
 
     def test_tvm_playbook_is_a_required_knowledge_base(self) -> None:
         config = load_config(ROOT)

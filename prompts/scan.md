@@ -18,6 +18,29 @@ against the target revision. Focus on java-tron's real security boundaries:
 - key, keystore, shielded and cryptographic validation boundaries; and
 - build, dependency, plugin, image and release-artifact integrity.
 
+## Required scan completion
+
+This is a bounded, unattended static review. Carry the selected source review through to a final
+semantic draft; do not stop to ask the operator for production state, deployment data, or other
+external facts. A `complete: false` draft is an intermediate checkpoint only. After the selected
+files and supplied cross-module paths have been reviewed, submit one accepted final draft with
+top-level `complete: true`, including when no candidate survives. In an SDK-owned scan, return
+control after that final draft is accepted and let the SDK perform sealing and report generation.
+
+Final-draft completion and coverage completeness are separate decisions. If an authorized
+in-scope source surface could not be reviewed, set coverage to `partial`, describe the exact gap,
+and still submit the final draft with `complete: true`. If every selected source surface was
+reviewed, use complete coverage even when live-chain or deployment observations were outside this
+static scan. Do not keep the semantic draft open merely because external evidence was unavailable.
+
+Use `coverage.openQuestions` only for a concrete unresolved security question tied to either an
+unreviewed authorized source surface or a source-backed, plausibly current attack path. General
+questions such as a network's current proposal value, activation height, deployed release, or node
+configuration are not open questions when the source does not independently establish current
+reachability. Record those cases as checked negative results or explicit static-analysis
+limitations, without a candidate identity. An empty result is valid: submit `findings: []`, avoid
+inventing deferred work or open questions, and complete the scan.
+
 ## Current-rule admission gate
 
 Do not turn intentionally retained pre-activation behavior into a current vulnerability or a
