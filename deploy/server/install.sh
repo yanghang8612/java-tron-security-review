@@ -112,6 +112,7 @@ if [[ "$SKIP_BUILD" == false ]]; then
     "$PROJECT_DIR"
   docker run --rm "$IMAGE_NAME" jtsr --version
   docker run --rm "$IMAGE_NAME" grok --version
+  docker run --rm --user 10001:10001 "$IMAGE_NAME" bwrap --version
 fi
 
 install -d -m 0750 -o root -g root "$CONFIG_DIR"

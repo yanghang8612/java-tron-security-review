@@ -7,6 +7,7 @@ ARG GROK_VERSION=1.0.13
 RUN apt-get -o Acquire::http::No-Cache=true update \
     && apt-get -o Acquire::http::No-Cache=true install \
       --yes --no-install-recommends \
+        bubblewrap \
         ca-certificates \
         git \
         python3 \
@@ -40,7 +41,8 @@ RUN --mount=type=cache,id=jtsr-npm-node24-v1,target=/root/.npm,sharing=locked \
       /usr/local/bin/grok \
     && codex-security --version \
     && /opt/codex-security/node_modules/.bin/codex --version \
-    && grok --version
+    && grok --version \
+    && bwrap --version
 
 COPY src /opt/jtsr/src
 COPY config /opt/jtsr/config

@@ -123,10 +123,18 @@ class ServerDeploymentTests(unittest.TestCase):
         )
         dockerfile = (container / "Dockerfile").read_text(encoding="utf-8")
         self.assertIn("grok --version", dockerfile)
+        self.assertIn("bubblewrap", dockerfile)
+        self.assertIn("bwrap --version", dockerfile)
         requirements = (container / "grok-requirements.toml").read_text(encoding="utf-8")
         self.assertIn("disable_bypass_permissions_mode = true", requirements)
         for tool in ("bash", "edit", "write", "webfetch", "websearch", "mcptool"):
             self.assertIn(f'tool = "{tool}"', requirements)
+
+        installer = (SERVER / "install.sh").read_text(encoding="utf-8")
+        self.assertIn(
+            'docker run --rm --user 10001:10001 "$IMAGE_NAME" bwrap --version',
+            installer,
+        )
 
     def test_codex_security_version_is_pinned_consistently(self) -> None:
         container = ROOT / "deploy" / "container"
