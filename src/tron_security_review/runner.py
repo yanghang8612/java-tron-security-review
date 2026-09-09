@@ -85,6 +85,7 @@ def _safe_environment(
         "CI",
         "NO_COLOR",
         "GROK_HOME",
+        "JTSR_GROK_SANDBOX_PROFILE",
         "HTTPS_PROXY",
         "HTTP_PROXY",
         "ALL_PROXY",
@@ -693,7 +694,13 @@ def _grok_command(
     prompt: str,
     grok_bin: Path | None,
     dry_run: bool,
+    sandbox_profile: str = "strict",
 ) -> list[str]:
+    if sandbox_profile not in {"strict", "devbox"}:
+        raise ValueError(
+            "Grok sandbox profile must be 'strict' or the explicitly selected "
+            "legacy-kernel fallback 'devbox'"
+        )
     if grok_bin:
         executable = grok_bin.expanduser().resolve()
         if not dry_run and (
@@ -743,7 +750,7 @@ def _grok_command(
         "--no-subagents",
         "--disable-web-search",
         "--sandbox",
-        "strict",
+        sandbox_profile,
     ]
 
 
@@ -846,7 +853,14 @@ def _invoke_grok_discovery(
     stdout_path = attempt_dir / "invocation.stdout.txt"
     stderr_path = attempt_dir / "invocation.stderr.log"
     prompt = prompt_path.read_text(encoding="utf-8")
-    command = _grok_command(job, target, prompt, grok_bin, dry_run)
+    command = _grok_command(
+        job,
+        target,
+        prompt,
+        grok_bin,
+        dry_run,
+        environment.get("JTSR_GROK_SANDBOX_PROFILE", "strict"),
+    )
     timeout_seconds = (job.profile.max_time_hours or 0) * 3600 or None
     if dry_run:
         stdout_path.write_text("", encoding="utf-8")

@@ -208,6 +208,9 @@ class ServerDeploymentTests(unittest.TestCase):
             SERVER / "java-tron-security-review-grok-auth@.service"
         ).read_text(encoding="utf-8")
         self.assertIn("JTSR_GROK_AUTH_ROOT=/var/lib/java-tron-security-review/grok-auth", environment)
+        self.assertIn("JTSR_GROK_SANDBOX_PROFILE=strict", environment)
+        self.assertIn("--env JTSR_GROK_SANDBOX_PROFILE", runner)
+        self.assertIn("legacy-kernel devbox fallback", runner)
         self.assertIn("dst=/scan/grok-auth", runner)
         self.assertIn("GROK_HOME=/scan/grok-auth", runner)
         self.assertIn("--enable-profile triage-grok", runner)

@@ -48,8 +48,9 @@ The server runs two independent discovery lanes: `gpt-6-astra` at `xhigh` and Gr
 the signed-in Grok subscription. Their candidate sets are unioned and deduplicated; agreement is
 recorded only as provenance and never treated as proof. Every selected candidate then gets its own
 `gpt-6-astra` at `high` skeptical-verifier invocation. Grok receives only the selected facet and
-is constrained to read/grep tools, `dontAsk` fail-closed permissions, a strict sandbox, a read-only
-source mount, and a root-owned policy that disables bypass-permissions mode.
+is constrained to read/grep tools, `dontAsk` fail-closed permissions, a read-only source mount,
+and a root-owned policy that disables bypass-permissions mode. The default Grok sandbox is
+`strict` on a Landlock-capable kernel.
 Only explicitly recognized usage/rate limits or model-availability errors are retried with
 `gpt-5.5` at `high`. Safety refusals and local budget/time limits never trigger model fallback.
 At most eight candidates are selected in severity order. Discovery has a six-hour process-group
@@ -70,6 +71,13 @@ the ChatGPT subscription bill or guarantee complete coverage.
 - An authorized, private location for scan reports.
 - Unprivileged user namespaces for Codex Security's inner filesystem sandbox. On hosts exposing
   `/proc/sys/user/max_user_namespaces`, the value must be greater than zero.
+
+Grok `strict` additionally requires Landlock (Linux 5.13 or newer). On a legacy kernel that cannot
+be upgraded, set `JTSR_GROK_SANDBOX_PROFILE=devbox` in the root-only `jtsr.env` only after accepting
+the reduced defense in depth. The wrapper still runs the whole scanner in a non-root container with
+a read-only root filesystem and source mount, all capabilities dropped, `no-new-privileges`, the
+pinned seccomp policy, resource limits, and only Grok `Read`/`Grep` tools. `off` is deliberately not
+accepted. Return the setting to `strict` after moving to a Landlock-capable host.
 
 If this runs on the same EC2 instance as a node, measure spare CPU, memory, disk, and outbound
 bandwidth before enabling the timer. Reduce `JTSR_CPU_LIMIT` and `JTSR_MEMORY_LIMIT` when necessary;

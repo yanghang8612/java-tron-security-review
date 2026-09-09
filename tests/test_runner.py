@@ -173,6 +173,12 @@ class RunnerTests(unittest.TestCase):
         command = _grok_command(job, self.target, "review", None, True)
         self.assertIn("dontAsk", command)
         self.assertIn("strict", command)
+        fallback = _grok_command(
+            job, self.target, "review", None, True, "devbox"
+        )
+        self.assertEqual(fallback[fallback.index("--sandbox") + 1], "devbox")
+        with self.assertRaises(ValueError):
+            _grok_command(job, self.target, "review", None, True, "off")
         self.assertEqual(
             command[command.index("--reasoning-effort") + 1], "high"
         )
@@ -417,6 +423,24 @@ class RunnerTests(unittest.TestCase):
         self.assertNotIn("AWS_ACCESS_KEY_ID", environment)
         self.assertNotIn("CODEX_HOME", environment)
         self.assertEqual(environment["AWS_EC2_METADATA_DISABLED"], "true")
+
+    def test_grok_sandbox_profile_is_forwarded_without_unrelated_secrets(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            with unittest.mock.patch.dict(
+                "os.environ",
+                {
+                    "GROK_HOME": "/scan/grok-auth",
+                    "JTSR_GROK_SANDBOX_PROFILE": "devbox",
+                    "AWS_ACCESS_KEY_ID": "aws-secret",
+                },
+                clear=True,
+            ):
+                environment = _safe_environment(
+                    Path(directory), {"grok-subscription"}
+                )
+        self.assertEqual(environment["GROK_HOME"], "/scan/grok-auth")
+        self.assertEqual(environment["JTSR_GROK_SANDBOX_PROFILE"], "devbox")
+        self.assertNotIn("AWS_ACCESS_KEY_ID", environment)
 
     def test_bedrock_child_environment_does_not_receive_openai_key(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

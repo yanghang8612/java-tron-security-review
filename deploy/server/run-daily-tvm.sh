@@ -44,6 +44,7 @@ JTSR_OUTPUT_ROOT="${JTSR_OUTPUT_ROOT:-/var/lib/java-tron-security-review/scans}"
 JTSR_WORK_ROOT="${JTSR_WORK_ROOT:-/var/lib/java-tron-security-review/work}"
 JTSR_AUTH_ROOT="${JTSR_AUTH_ROOT:-/var/lib/java-tron-security-review/auth}"
 JTSR_GROK_AUTH_ROOT="${JTSR_GROK_AUTH_ROOT:-/var/lib/java-tron-security-review/grok-auth}"
+JTSR_GROK_SANDBOX_PROFILE="${JTSR_GROK_SANDBOX_PROFILE:-strict}"
 JTSR_RETENTION_DAYS="${JTSR_RETENTION_DAYS:-90}"
 JTSR_MEMORY_LIMIT="${JTSR_MEMORY_LIMIT:-8g}"
 JTSR_CPU_LIMIT="${JTSR_CPU_LIMIT:-4}"
@@ -94,6 +95,11 @@ validate_absolute_directory JTSR_GROK_AUTH_ROOT "$JTSR_GROK_AUTH_ROOT"
 [[ "$JTSR_TARGET_REF" =~ ^[A-Za-z0-9][A-Za-z0-9._/-]*$ ]] || fail "target ref contains unsupported characters"
 [[ "$JTSR_TARGET_REF" != *".."* && "$JTSR_TARGET_REF" != *"@{"* ]] || fail "target ref is unsafe"
 [[ -z "$JTSR_SCOPE" || "$JTSR_SCOPE" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,159}$ ]] || fail "scope override is unsafe"
+[[ "$JTSR_GROK_SANDBOX_PROFILE" == strict || "$JTSR_GROK_SANDBOX_PROFILE" == devbox ]] || \
+  fail "JTSR_GROK_SANDBOX_PROFILE must be strict or devbox"
+if [[ "$JTSR_GROK_SANDBOX_PROFILE" == devbox ]]; then
+  printf 'java-tron-security-review: Grok uses the legacy-kernel devbox fallback; outer hardened Docker isolation remains enforced\n' >&2
+fi
 
 if [[ -r /proc/sys/user/max_user_namespaces ]] && \
    [[ "$(cat /proc/sys/user/max_user_namespaces)" == "0" ]]; then
@@ -318,6 +324,7 @@ DOCKER_ARGS=(
   --env HOME=/home/scanner
   --env TMPDIR=/tmp
   --env NO_COLOR=1
+  --env JTSR_GROK_SANDBOX_PROFILE
 )
 DOCKER_ARGS+=("${RUNTIME_DOCKER_ARGS[@]}")
 if [[ -n "$JTSR_VERIFY_SOURCE_RUN" ]]; then
