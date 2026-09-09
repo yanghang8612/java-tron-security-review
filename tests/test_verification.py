@@ -14,7 +14,12 @@ from tron_security_review.config import load_config
 from tron_security_review.planner import build_plan
 from tron_security_review.reverify import failed_verification_inputs, verification_inputs
 from tron_security_review.runner import _candidate_paths, run_plan
-from tron_security_review.verification import collect_candidates, review_outcome, validate_verdict
+from tron_security_review.verification import (
+    collect_candidates,
+    collect_candidates_from_jobs,
+    review_outcome,
+    validate_verdict,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_JOB = "triage-tvm-opcode-dispatch"
@@ -90,6 +95,28 @@ class VerificationTests(unittest.TestCase):
         self.assertEqual(first["source_kind"], "finding")
         self.assertEqual(len(first["source_artifacts"]), 2)
         self.assertTrue(first["deferral_reason"])
+
+    def test_independent_source_lanes_merge_without_promoting_agreement(self):
+        grok = self.source / "triage-grok-tvm-opcode-dispatch" / "results"
+        write_json(grok / "findings.json", {"findings": []})
+        write_json(
+            grok / "coverage.json",
+            {"completeness": "complete", "deferred": [candidate(1), candidate(6)]},
+        )
+        result = collect_candidates_from_jobs(
+            self.source, [SOURCE_JOB, "triage-grok-tvm-opcode-dispatch"]
+        )
+        self.assertEqual(len(result["candidates"]), 6)
+        agreed = next(
+            item
+            for item in result["candidates"]
+            if item["source_fingerprint"] == "native:candidate-1"
+        )
+        self.assertEqual(
+            agreed["source_profiles"],
+            ["triage-grok-tvm-opcode-dispatch", SOURCE_JOB],
+        )
+        self.assertEqual(agreed["source_kind"], "deferred")
 
     def test_malformed_missing_and_symlink_artifacts_are_not_silent_empty(self):
         (self.source_results / "findings.json").write_text("{}")

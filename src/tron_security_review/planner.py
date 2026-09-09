@@ -74,12 +74,19 @@ def highest_risk(files: tuple[str, ...], matches: tuple[ScopeMatch, ...]) -> str
     return "low"
 
 
-def _eligible_profiles(config: AppConfig, mode: str, risk: str) -> tuple[Profile, ...]:
+def _eligible_profiles(
+    config: AppConfig,
+    mode: str,
+    risk: str,
+    enabled_profiles: tuple[str, ...] = (),
+) -> tuple[Profile, ...]:
+    enabled = set(enabled_profiles)
     return tuple(
         profile
         for profile in config.profiles
         if mode in profile.modes
         and RISK_ORDER[risk] >= RISK_ORDER[profile.minimum_risk]
+        and (not profile.optional or profile.name in enabled)
     )
 
 
@@ -131,10 +138,21 @@ def build_plan(
     scope_id: str | None = None,
     iso_week: int | None = None,
     day_of_year: int | None = None,
+    enabled_profiles: tuple[str, ...] = (),
 ) -> ScanPlan:
     if run_mode not in VALID_RUN_MODES:
         allowed = ", ".join(sorted(VALID_RUN_MODES))
         raise ValueError(f"run mode must be one of {allowed}; got {run_mode!r}")
+
+    optional_names = {profile.name for profile in config.profiles if profile.optional}
+    invalid_enabled = set(enabled_profiles) - optional_names
+    if invalid_enabled:
+        choices = ", ".join(sorted(optional_names)) or "none"
+        invalid = ", ".join(sorted(invalid_enabled))
+        raise ValueError(
+            f"--enable-profile accepts optional profiles only; got {invalid}; "
+            f"configured optional profiles: {choices}"
+        )
 
     matches = classify_files(config, files)
     selected_scope: Scope | None = None
@@ -154,7 +172,7 @@ def build_plan(
             skipped_reason="no changed files",
         )
 
-    profiles = _eligible_profiles(config, run_mode, risk)
+    profiles = _eligible_profiles(config, run_mode, risk, enabled_profiles)
     jobs: list[PlanJob] = []
 
     if run_mode == "daily-tvm":

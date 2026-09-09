@@ -19,7 +19,13 @@ from .artifacts import (
 )
 from .config import AppConfig, available_knowledge_bases
 from .planner import PlanJob, ScanPlan, existing_scope_paths
-from .verification import SAFETY_MARKERS, collect_candidates, read_json, review_outcome
+from .verification import (
+    SAFETY_MARKERS,
+    collect_candidates_from_jobs,
+    read_artifact_text,
+    read_json,
+    review_outcome,
+)
 from .supervision import execution_path, run_command as _run_command
 
 
@@ -45,6 +51,7 @@ class InvocationResult:
     idle_timeout_seconds: float | None = None
     configured_max_cost: float | None = None
     cost_limit_enforced: bool = False
+    engine: str = "codex-security"
 
 
 def default_run_id(mode: str) -> str:
@@ -77,6 +84,7 @@ def _safe_environment(
         "TERM",
         "CI",
         "NO_COLOR",
+        "GROK_HOME",
         "HTTPS_PROXY",
         "HTTP_PROXY",
         "ALL_PROXY",
@@ -328,6 +336,14 @@ _CANDIDATE_FIELDS = (
     "remediation",
     "paths",
     "deferral_reason",
+    "entryPoint",
+    "callChain",
+    "proposalGateAssessment",
+    "productionReachability",
+    "attackerPrerequisites",
+    "counterEvidenceChecked",
+    "minimalReproducer",
+    "modelOrigin",
 )
 _PATH_KEYS = {"path", "paths", "file", "filepath", "filename", "uri", "location", "locations", "sourcelocations", "source_locations"}
 _SEVERITY_ORDER = {"critical": 0, "high": 1, "medium": 2, "low": 3}
@@ -655,17 +671,315 @@ def _invoke_scan(
     )
 
 
-def _source_job_for(plan: ScanPlan, job: PlanJob) -> PlanJob | None:
-    source_name = job.profile.candidate_source_profile
-    for candidate in plan.jobs:
-        same_scope = (
+_GROK_BLOCK = re.compile(
+    r"^```jtsr-grok-candidates\s*\n(.*?)\n```[ \t]*$", re.M | re.S
+)
+_GROK_REQUIRED_FIELDS = (
+    "title",
+    "severity",
+    "summary",
+    "rootCause",
+    "violatedInvariant",
+    "sourceLocations",
+    "impact",
+    "proposalGateAssessment",
+    "productionReachability",
+)
+
+
+def _grok_command(
+    job: PlanJob,
+    target: Path,
+    prompt: str,
+    grok_bin: Path | None,
+    dry_run: bool,
+) -> list[str]:
+    if grok_bin:
+        executable = grok_bin.expanduser().resolve()
+        if not dry_run and (
+            not executable.is_file() or not os.access(executable, os.X_OK)
+        ):
+            raise FileNotFoundError(f"Grok Build binary is not executable: {executable}")
+        prefix = str(executable)
+    else:
+        prefix = shutil.which("grok") or "grok"
+        if not dry_run and prefix == "grok":
+            raise FileNotFoundError("grok was not found on PATH")
+    return [
+        prefix,
+        "--no-auto-update",
+        "--cwd",
+        str(target),
+        "--single",
+        prompt,
+        "--model",
+        job.profile.model,
+        "--reasoning-effort",
+        job.profile.effort,
+        "--output-format",
+        "plain",
+        "--permission-mode",
+        "dontAsk",
+        "--tools",
+        "Read,Grep",
+        "--disallowed-tools",
+        "Bash,Edit,Write,WebFetch,WebSearch,MCPTool",
+        "--allow",
+        "Read",
+        "--allow",
+        "Grep",
+        "--deny",
+        "Edit",
+        "--deny",
+        "Bash",
+        "--deny",
+        "Write",
+        "--deny",
+        "WebFetch",
+        "--deny",
+        "WebSearch",
+        "--deny",
+        "MCPTool",
+        "--no-subagents",
+        "--disable-web-search",
+        "--sandbox",
+        "strict",
+    ]
+
+
+def _valid_grok_candidate(
+    value: Any, target: Path, allowed_paths: tuple[str, ...], model: str
+) -> tuple[dict[str, Any] | None, str | None]:
+    if not isinstance(value, dict):
+        return None, "candidate is not an object"
+    candidate = {
+        key: _bounded_candidate_value(item)
+        for key, item in value.items()
+        if key in _CANDIDATE_FIELDS
+    }
+    for key in _GROK_REQUIRED_FIELDS:
+        if candidate.get(key) in (None, "", [], {}):
+            return None, f"candidate is missing {key}"
+    if str(candidate["severity"]).lower() not in _SEVERITY_ORDER:
+        return None, "candidate has an invalid severity"
+    for key in ("proposalGateAssessment", "productionReachability"):
+        assessment = candidate.get(key)
+        if not isinstance(assessment, dict):
+            return None, f"candidate has an invalid {key}"
+        expected = (
+            "active_path_proven"
+            if key == "proposalGateAssessment"
+            else "proven"
+        )
+        evidence = assessment.get("evidence")
+        if (
+            assessment.get("status") != expected
+            or not isinstance(evidence, list)
+            or not evidence
+            or not all(isinstance(item, str) and item.strip() for item in evidence)
+        ):
+            return None, f"candidate lacks proven {key} evidence"
+    paths = _candidate_paths(candidate, target, allowed_paths)
+    if not paths:
+        return None, "candidate has no valid in-scope source location"
+    for key in ("id", "finding_id", "findingId", "fingerprint", "candidateId"):
+        candidate.pop(key, None)
+    candidate["paths"] = list(paths)
+    candidate["modelOrigin"] = {"engine": "grok-build", "model": model}
+    fingerprint = finding_fingerprint(candidate)
+    candidate["candidateId"] = (
+        "grok:" + fingerprint.removeprefix("derived:")[:24]
+    )
+    return candidate, None
+
+
+def _parse_grok_output(
+    output: str, target: Path, allowed_paths: tuple[str, ...], model: str
+) -> tuple[dict[str, Any] | None, list[dict[str, Any]]]:
+    blocks = _GROK_BLOCK.findall(output)
+    if len(blocks) != 1:
+        return None, [{"reason": "missing, invalid, or conflicting result block"}]
+    try:
+        document = json.loads(blocks[0])
+    except (json.JSONDecodeError, RecursionError):
+        return None, [{"reason": "missing, invalid, or conflicting result block"}]
+    if not isinstance(document, dict):
+        return None, [{"reason": "result block is not an object"}]
+    coverage = document.get("coverage")
+    candidates = document.get("candidates")
+    if (
+        document.get("schema_version") != 1
+        or not isinstance(coverage, dict)
+        or coverage.get("completeness") not in {"complete", "partial"}
+        or not isinstance(coverage.get("summary"), str)
+        or not coverage["summary"].strip()
+        or not isinstance(candidates, list)
+        or len(candidates) > 8
+    ):
+        return None, [{"reason": "result block does not match the required schema"}]
+    accepted: list[dict[str, Any]] = []
+    discarded: list[dict[str, Any]] = []
+    for index, value in enumerate(candidates, start=1):
+        candidate, reason = _valid_grok_candidate(
+            value, target, allowed_paths, model
+        )
+        if candidate:
+            accepted.append(candidate)
+        else:
+            discarded.append({"index": index, "reason": reason})
+    return {"coverage": coverage, "candidates": accepted}, discarded
+
+
+def _invoke_grok_discovery(
+    *,
+    job: PlanJob,
+    target: Path,
+    attempt_dir: Path,
+    prompt_path: Path,
+    environment: dict[str, str],
+    grok_bin: Path | None,
+    dry_run: bool,
+) -> InvocationResult:
+    attempt_dir.mkdir(parents=True, exist_ok=True)
+    scan_dir = attempt_dir / "results"
+    scan_dir.mkdir(parents=True, exist_ok=True)
+    stdout_path = attempt_dir / "invocation.stdout.txt"
+    stderr_path = attempt_dir / "invocation.stderr.log"
+    prompt = prompt_path.read_text(encoding="utf-8")
+    command = _grok_command(job, target, prompt, grok_bin, dry_run)
+    timeout_seconds = (job.profile.max_time_hours or 0) * 3600 or None
+    if dry_run:
+        stdout_path.write_text("", encoding="utf-8")
+        stderr_path.write_text("", encoding="utf-8")
+        write_json(scan_dir / "findings.json", {"findings": []})
+        write_json(
+            scan_dir / "coverage.json",
+            {
+                "completeness": "partial",
+                "deferred": [],
+                "summary": "Dry run: Grok Build was not invoked.",
+            },
+        )
+        write_json(
+            scan_dir / "scan-manifest.json",
+            {"schema_version": 1, "engine": "grok-build", "dry_run": True},
+        )
+        return InvocationResult(
+            job_id=job.id,
+            command=tuple(command),
+            scan_dir=str(scan_dir),
+            returncode=0,
+            export_returncode=None,
+            stdout_path=str(stdout_path),
+            stderr_path=str(stderr_path),
+            sarif_path=None,
+            model=job.profile.model,
+            effort=job.profile.effort,
+            timeout_seconds=timeout_seconds,
+            configured_max_cost=job.profile.max_cost,
+            cost_limit_enforced=False,
+            engine="grok-build",
+        )
+    returncode = _run_command(
+        command,
+        environment,
+        stdout_path,
+        stderr_path,
+        timeout_seconds=timeout_seconds,
+    )
+    try:
+        output = read_artifact_text(stdout_path, attempt_dir)
+    except (OSError, ValueError):
+        output = ""
+    parsed, discarded = _parse_grok_output(
+        output, target, job.paths, job.profile.model
+    )
+    if returncode == 0 and parsed is None:
+        returncode = 2
+    coverage_value = (
+        parsed["coverage"]
+        if parsed
+        else {
+            "completeness": "partial",
+            "summary": "Grok Build did not return one valid structured result block.",
+        }
+    )
+    if coverage_value["completeness"] == "partial" and returncode == 0:
+        returncode = 2
+    deferred = []
+    for candidate in parsed["candidates"] if parsed else []:
+        deferred.append(
+            {
+                "id": candidate["candidateId"],
+                "reason": "Independent Grok hypothesis pending evidence review",
+                "paths": candidate["paths"],
+                "candidate": candidate,
+            }
+        )
+    write_json(scan_dir / "findings.json", {"findings": []})
+    write_json(
+        scan_dir / "coverage.json",
+        {
+            "completeness": coverage_value["completeness"],
+            "summary": coverage_value["summary"],
+            "deferred": deferred,
+            "discarded_candidates": discarded,
+        },
+    )
+    write_json(
+        scan_dir / "scan-manifest.json",
+        {
+            "schema_version": 1,
+            "engine": "grok-build",
+            "model": job.profile.model,
+            "candidate_count": len(deferred),
+            "discarded_candidate_count": len(discarded),
+            "returncode": returncode,
+        },
+    )
+    (scan_dir / "report.md").write_text(
+        "# Grok challenger review\n\n"
+        + coverage_value["summary"].strip()
+        + f"\n\nCandidates queued for independent verification: {len(deferred)}.\n",
+        encoding="utf-8",
+    )
+    try:
+        execution = read_json(execution_path(stdout_path), attempt_dir)
+    except (OSError, ValueError):
+        execution = {}
+    return InvocationResult(
+        job_id=job.id,
+        command=tuple(command),
+        scan_dir=str(scan_dir),
+        returncode=returncode,
+        export_returncode=None,
+        stdout_path=str(stdout_path),
+        stderr_path=str(stderr_path),
+        sarif_path=None,
+        model=job.profile.model,
+        effort=job.profile.effort,
+        safety_blocked=_cyber_safety_blocked(stderr_path),
+        timeout_seconds=timeout_seconds,
+        termination_reason=execution.get("termination_reason"),
+        duration_seconds=execution.get("duration_seconds"),
+        configured_max_cost=job.profile.max_cost,
+        cost_limit_enforced=False,
+        engine="grok-build",
+    )
+
+
+def _source_jobs_for(plan: ScanPlan, job: PlanJob) -> list[PlanJob]:
+    source_names = set(job.profile.candidate_source_profiles)
+    return [
+        candidate
+        for candidate in plan.jobs
+        if candidate.profile.name in source_names
+        and (
             candidate.scope is None
             or job.scope is None
             or candidate.scope.id == job.scope.id
         )
-        if candidate.profile.name == source_name and same_scope:
-            return candidate
-    return None
+    ]
 
 
 def _run_per_finding_job(
@@ -691,12 +1005,13 @@ def _run_per_finding_job(
     job_dir.mkdir(parents=True, exist_ok=True)
     manifest_path = job_dir / "verification-manifest.json"
     profile = job.profile
-    source_job = _source_job_for(plan, job)
+    source_jobs = _source_jobs_for(plan, job)
     manifest: dict[str, Any] = {
         "schema_version": 2,
         "job_id": job.id,
         "strategy": "per-finding",
         "source_profile": profile.candidate_source_profile,
+        "configured_source_profiles": list(profile.candidate_source_profiles),
         "stage_max_cost": profile.max_cost,
         "per_finding_max_cost": profile.per_finding_max_cost,
         "cost_limit_enforced": _cli_cost_limit_supported(
@@ -718,15 +1033,23 @@ def _run_per_finding_job(
         manifest["deferred_until_source_scan"] = True
         write_json(manifest_path, manifest)
         return [], False
-    if source_job is None:
-        manifest["error"] = "candidate source profile is not present in the plan"
+    if not source_jobs:
+        manifest["error"] = "no candidate source profile is present in the plan"
         write_json(manifest_path, manifest)
         return [], True
+    manifest["source_profiles"] = [source_job.profile.name for source_job in source_jobs]
 
     source_root = source_run_dir or run_dir
-    source_path = source_root / source_job.id / "results" / "findings.json"
-    manifest["source_artifact"] = str(source_path)
-    intake = collect_candidates(source_root, source_job.id)
+    manifest["source_artifacts"] = [
+        str(source_root / source_job.id / "results")
+        for source_job in source_jobs
+    ]
+    manifest["source_artifact"] = str(
+        source_root / source_jobs[0].id / "results" / "findings.json"
+    )
+    intake = collect_candidates_from_jobs(
+        source_root, [source_job.id for source_job in source_jobs]
+    )
     manifest["intake_errors"] = intake["errors"]
     manifest["excluded"] = intake["excluded"]
     candidates = intake["candidates"]
@@ -734,7 +1057,10 @@ def _run_per_finding_job(
         manifest["source_candidate_count"] = len(candidates)
         candidates = [entry for entry in candidates if entry["source_fingerprint"] in selected_fingerprints]
         manifest["retry_failed_only"] = True
-    if _cyber_safety_blocked(source_root / source_job.id / "invocation.stderr.log"):
+    if any(
+        _cyber_safety_blocked(source_root / source_job.id / "invocation.stderr.log")
+        for source_job in source_jobs
+    ):
         manifest["error"] = "source scan was safety-blocked; do not retry through verification"
         manifest["status"] = "blocked"
         write_json(manifest_path, manifest)
@@ -916,6 +1242,7 @@ def run_plan(
     run_id: str,
     auth: str,
     cli_bin: Path | None = None,
+    grok_bin: Path | None = None,
     base_commit: str | None = None,
     head_commit: str | None = None,
     dry_run: bool = False,
@@ -1017,26 +1344,40 @@ def run_plan(
         job_dir = run_dir / job.id
         job_dir.mkdir(parents=True, exist_ok=True)
         prompt_path = _render_job_prompt(job, plan, job_dir / "scan-context.md")
-        results.append(
-            _invoke_scan(
-                config=config,
-                job=job,
-                plan=plan,
-                target=target,
-                attempt_dir=job_dir,
-                prompt_path=prompt_path,
-                knowledge_bases=knowledge_bases,
-                environment=environment,
-                auth=auth,
-                cli_bin=cli_bin,
-                base_commit=base_commit,
-                head_commit=head_commit,
-                dry_run=dry_run,
-                provider_override=provider_override,
-                model_override=model_override,
-                timeout_seconds=(job.profile.max_time_hours or 0) * 3600 or None,
+        if job.profile.engine == "grok-build":
+            results.append(
+                _invoke_grok_discovery(
+                    job=job,
+                    target=target,
+                    attempt_dir=job_dir,
+                    prompt_path=prompt_path,
+                    environment=environment,
+                    grok_bin=grok_bin,
+                    dry_run=dry_run,
+                )
             )
-        )
+        else:
+            results.append(
+                _invoke_scan(
+                    config=config,
+                    job=job,
+                    plan=plan,
+                    target=target,
+                    attempt_dir=job_dir,
+                    prompt_path=prompt_path,
+                    knowledge_bases=knowledge_bases,
+                    environment=environment,
+                    auth=auth,
+                    cli_bin=cli_bin,
+                    base_commit=base_commit,
+                    head_commit=head_commit,
+                    dry_run=dry_run,
+                    provider_override=provider_override,
+                    model_override=model_override,
+                    timeout_seconds=(job.profile.max_time_hours or 0) * 3600
+                    or None,
+                )
+            )
 
     excluded_scan_dirs = (
         Path(result.scan_dir)

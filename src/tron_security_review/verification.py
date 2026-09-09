@@ -148,6 +148,46 @@ def collect_candidates(run_dir: Path, source_job_id: str) -> dict:
     return {"candidates": sorted(entries.values(), key=_priority), "excluded": excluded, "errors": errors}
 
 
+def collect_candidates_from_jobs(run_dir: Path, source_job_ids: list[str]) -> dict:
+    """Merge independent discovery lanes without treating agreement as proof."""
+    entries: dict[str, dict] = {}
+    excluded: list[dict] = []
+    errors: list[str] = []
+    for source_job_id in source_job_ids:
+        intake = collect_candidates(run_dir, source_job_id)
+        excluded.extend(intake["excluded"])
+        errors.extend(intake["errors"])
+        for incoming in intake["candidates"]:
+            entry = dict(incoming)
+            entry["source_profiles"] = [source_job_id]
+            fingerprint = entry["source_fingerprint"]
+            if fingerprint not in entries:
+                entries[fingerprint] = entry
+                continue
+            current = entries[fingerprint]
+            current["source_profiles"].append(source_job_id)
+            for artifact in entry["source_artifacts"]:
+                if artifact not in current["source_artifacts"]:
+                    current["source_artifacts"].append(artifact)
+            if current["source_kind"] == "deferred" and entry["source_kind"] == "finding":
+                current["source_kind"] = "finding"
+                current["source_artifact"] = entry["source_artifact"]
+            if entry.get("deferral_reason") and not current.get("deferral_reason"):
+                current["deferral_reason"] = entry["deferral_reason"]
+            for path in entry.get("source_paths", []):
+                if path not in current["source_paths"]:
+                    current["source_paths"].append(path)
+            for key, value in entry["candidate"].items():
+                current["candidate"].setdefault(key, value)
+    for entry in entries.values():
+        entry["source_profiles"] = sorted(set(entry["source_profiles"]))
+    return {
+        "candidates": sorted(entries.values(), key=_priority),
+        "excluded": excluded,
+        "errors": errors,
+    }
+
+
 def validate_verdict(value: Any, fingerprint: str) -> dict:
     if not isinstance(value, dict) or value.get("schema_version") != 1:
         raise ValueError("missing verdict schema")

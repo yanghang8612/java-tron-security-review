@@ -68,6 +68,7 @@ LIBEXEC_DIR=/usr/local/libexec/java-tron-security-review
 OUTPUT_ROOT=/var/lib/java-tron-security-review/scans
 WORK_ROOT=/var/lib/java-tron-security-review/work
 AUTH_ROOT=/var/lib/java-tron-security-review/auth
+GROK_AUTH_ROOT=/var/lib/java-tron-security-review/grok-auth
 SCANNER_USER=jtsr-scanner
 SCANNER_UID=10001
 SCANNER_GID=10001
@@ -110,6 +111,7 @@ if [[ "$SKIP_BUILD" == false ]]; then
     --tag "$IMAGE_NAME" \
     "$PROJECT_DIR"
   docker run --rm "$IMAGE_NAME" jtsr --version
+  docker run --rm "$IMAGE_NAME" grok --version
 fi
 
 install -d -m 0750 -o root -g root "$CONFIG_DIR"
@@ -117,12 +119,15 @@ install -d -m 0755 -o root -g root "$LIBEXEC_DIR"
 install -d -m 0700 -o "$SCANNER_UID" -g "$SCANNER_GID" "$OUTPUT_ROOT"
 install -d -m 0700 -o root -g root "$WORK_ROOT"
 install -d -m 0700 -o "$SCANNER_UID" -g "$SCANNER_GID" "$AUTH_ROOT"
+install -d -m 0700 -o "$SCANNER_UID" -g "$SCANNER_GID" "$GROK_AUTH_ROOT"
 
 install -m 0755 "$SCRIPT_DIR/run-daily-tvm.sh" "$LIBEXEC_DIR/run-daily-tvm"
 install -m 0755 "$SCRIPT_DIR/auth-chatgpt.sh" "$LIBEXEC_DIR/auth-chatgpt"
+install -m 0755 "$SCRIPT_DIR/auth-grok.sh" "$LIBEXEC_DIR/auth-grok"
 install -m 0755 "$SCRIPT_DIR/notify-failure.sh" "$LIBEXEC_DIR/notify-failure"
 install -m 0644 "$SCRIPT_DIR/codex-security-seccomp.json" "$CONFIG_DIR/codex-security-seccomp.json"
 install -m 0644 "$SCRIPT_DIR/java-tron-security-review-auth@.service" /etc/systemd/system/java-tron-security-review-auth@.service
+install -m 0644 "$SCRIPT_DIR/java-tron-security-review-grok-auth@.service" /etc/systemd/system/java-tron-security-review-grok-auth@.service
 install -m 0644 "$SCRIPT_DIR/java-tron-security-review.service" /etc/systemd/system/java-tron-security-review.service
 install -m 0644 "$SCRIPT_DIR/java-tron-security-review-verify@.service" /etc/systemd/system/java-tron-security-review-verify@.service
 install -m 0644 "$SCRIPT_DIR/java-tron-security-review.timer" /etc/systemd/system/java-tron-security-review.timer
@@ -148,6 +153,9 @@ else
   printf 'For JTSR_AUTH=chatgpt, authenticate with:\n'
   printf '  systemctl start --no-block java-tron-security-review-auth@login.service\n'
   printf '  journalctl -fu java-tron-security-review-auth@login.service\n'
+  printf 'Authenticate the Grok Build subscription with:\n'
+  printf '  systemctl start --no-block java-tron-security-review-grok-auth@login.service\n'
+  printf '  journalctl -fu java-tron-security-review-grok-auth@login.service\n'
   printf 'Then run the acceptance scan and enable the timer:\n'
   printf '  systemctl start java-tron-security-review.service\n'
   printf '  systemctl enable --now java-tron-security-review.timer\n'

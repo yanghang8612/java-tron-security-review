@@ -14,6 +14,8 @@ from tron_security_review.runner import (
     _estimated_cost,
     _fallback_reason,
     _has_partial_results,
+    _grok_command,
+    _parse_grok_output,
     _run_command,
     _safe_environment,
     build_scan_command,
@@ -159,6 +161,60 @@ class RunnerTests(unittest.TestCase):
                 paths,
                 ("actuator/src/main/java/org/tron/core/vm/Example.java",),
             )
+
+    def test_grok_challenger_is_read_only_and_requires_active_production_evidence(self) -> None:
+        plan = build_plan(
+            self.config,
+            "daily-tvm",
+            day_of_year=2,
+            enabled_profiles=("triage-grok",),
+        )
+        job = next(job for job in plan.jobs if job.profile.name == "triage-grok")
+        command = _grok_command(job, self.target, "review", None, True)
+        self.assertIn("dontAsk", command)
+        self.assertIn("strict", command)
+        self.assertEqual(
+            command[command.index("--reasoning-effort") + 1], "high"
+        )
+        self.assertEqual(command.count("--allow"), 2)
+        self.assertIn("Edit", command)
+        source = "actuator/src/main/java/org/tron/core/vm/VM.java"
+        candidate = {
+            "title": "Synthetic active-path hypothesis",
+            "severity": "high",
+            "summary": "A synthetic test-only hypothesis.",
+            "rootCause": "Synthetic root cause",
+            "violatedInvariant": "Synthetic invariant",
+            "sourceLocations": [source + ":1"],
+            "impact": "Synthetic impact",
+            "proposalGateAssessment": {
+                "status": "active_path_proven",
+                "evidence": [source + ":1"],
+            },
+            "productionReachability": {
+                "status": "proven",
+                "evidence": [source + ":1"],
+            },
+        }
+        document = {
+            "schema_version": 1,
+            "coverage": {"completeness": "complete", "summary": "Synthetic."},
+            "candidates": [candidate],
+        }
+        output = "```jtsr-grok-candidates\n" + json.dumps(document) + "\n```"
+        parsed, discarded = _parse_grok_output(output, self.target, job.paths, "grok-build")
+        self.assertEqual(len(parsed["candidates"]), 1)
+        self.assertFalse(discarded)
+        duplicate, duplicate_errors = _parse_grok_output(
+            output + "\n" + output, self.target, job.paths, "grok-build"
+        )
+        self.assertIsNone(duplicate)
+        self.assertTrue(duplicate_errors)
+        candidate["proposalGateAssessment"]["evidence"] = []
+        output = "```jtsr-grok-candidates\n" + json.dumps(document) + "\n```"
+        parsed, discarded = _parse_grok_output(output, self.target, job.paths, "grok-build")
+        self.assertFalse(parsed["candidates"])
+        self.assertIn("proven proposalGateAssessment evidence", discarded[0]["reason"])
 
     def _simulate_verifier_failure(self, failure_message, failure_code=2, termination=None, known_usage=True):
         with tempfile.TemporaryDirectory() as directory:

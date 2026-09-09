@@ -43,6 +43,7 @@ JTSR_SCOPE="${JTSR_SCOPE:-}"
 JTSR_OUTPUT_ROOT="${JTSR_OUTPUT_ROOT:-/var/lib/java-tron-security-review/scans}"
 JTSR_WORK_ROOT="${JTSR_WORK_ROOT:-/var/lib/java-tron-security-review/work}"
 JTSR_AUTH_ROOT="${JTSR_AUTH_ROOT:-/var/lib/java-tron-security-review/auth}"
+JTSR_GROK_AUTH_ROOT="${JTSR_GROK_AUTH_ROOT:-/var/lib/java-tron-security-review/grok-auth}"
 JTSR_RETENTION_DAYS="${JTSR_RETENTION_DAYS:-90}"
 JTSR_MEMORY_LIMIT="${JTSR_MEMORY_LIMIT:-8g}"
 JTSR_CPU_LIMIT="${JTSR_CPU_LIMIT:-4}"
@@ -58,11 +59,13 @@ JTSR_VERIFY_RETRY_FROM="${JTSR_VERIFY_RETRY_FROM:-}"
 JTSR_OUTPUT_ROOT="$(realpath -m -- "$JTSR_OUTPUT_ROOT")"
 JTSR_WORK_ROOT="$(realpath -m -- "$JTSR_WORK_ROOT")"
 JTSR_AUTH_ROOT="$(realpath -m -- "$JTSR_AUTH_ROOT")"
+JTSR_GROK_AUTH_ROOT="$(realpath -m -- "$JTSR_GROK_AUTH_ROOT")"
 JTSR_SECCOMP_PROFILE="$(realpath -m -- "$JTSR_SECCOMP_PROFILE")"
 
 validate_absolute_directory JTSR_OUTPUT_ROOT "$JTSR_OUTPUT_ROOT"
 validate_absolute_directory JTSR_WORK_ROOT "$JTSR_WORK_ROOT"
 validate_absolute_directory JTSR_AUTH_ROOT "$JTSR_AUTH_ROOT"
+validate_absolute_directory JTSR_GROK_AUTH_ROOT "$JTSR_GROK_AUTH_ROOT"
 [[ "$JTSR_SECCOMP_PROFILE" == /* ]] || fail "JTSR_SECCOMP_PROFILE must be an absolute path"
 [[ -f "$JTSR_SECCOMP_PROFILE" && ! -L "$JTSR_SECCOMP_PROFILE" ]] || \
   fail "JTSR_SECCOMP_PROFILE must be a regular non-symlink file"
@@ -73,6 +76,12 @@ validate_absolute_directory JTSR_AUTH_ROOT "$JTSR_AUTH_ROOT"
 [[ "$JTSR_OUTPUT_ROOT" != "$JTSR_AUTH_ROOT"/* ]] || fail "output root must not be inside the auth root"
 [[ "$JTSR_AUTH_ROOT" != "$JTSR_WORK_ROOT" && "$JTSR_AUTH_ROOT" != "$JTSR_WORK_ROOT"/* ]] || fail "auth root must not be inside the work root"
 [[ "$JTSR_WORK_ROOT" != "$JTSR_AUTH_ROOT"/* ]] || fail "work root must not be inside the auth root"
+[[ "$JTSR_GROK_AUTH_ROOT" != "$JTSR_OUTPUT_ROOT" && "$JTSR_GROK_AUTH_ROOT" != "$JTSR_OUTPUT_ROOT"/* ]] || fail "Grok auth root must not be inside the output root"
+[[ "$JTSR_OUTPUT_ROOT" != "$JTSR_GROK_AUTH_ROOT"/* ]] || fail "output root must not be inside the Grok auth root"
+[[ "$JTSR_GROK_AUTH_ROOT" != "$JTSR_WORK_ROOT" && "$JTSR_GROK_AUTH_ROOT" != "$JTSR_WORK_ROOT"/* ]] || fail "Grok auth root must not be inside the work root"
+[[ "$JTSR_WORK_ROOT" != "$JTSR_GROK_AUTH_ROOT"/* ]] || fail "work root must not be inside the Grok auth root"
+[[ "$JTSR_GROK_AUTH_ROOT" != "$JTSR_AUTH_ROOT" && "$JTSR_GROK_AUTH_ROOT" != "$JTSR_AUTH_ROOT"/* ]] || fail "Grok and ChatGPT auth roots must differ"
+[[ "$JTSR_AUTH_ROOT" != "$JTSR_GROK_AUTH_ROOT"/* ]] || fail "ChatGPT auth root must not be inside the Grok auth root"
 [[ "$JTSR_IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._/:@-]*$ ]] || fail "JTSR_IMAGE has an invalid format"
 [[ "$JTSR_DOCKER_NETWORK" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || fail "JTSR_DOCKER_NETWORK has an invalid format"
 [[ "$JTSR_RETENTION_DAYS" =~ ^[1-9][0-9]*$ ]] || fail "JTSR_RETENTION_DAYS must be a positive integer"
@@ -197,6 +206,41 @@ case "$JTSR_PROVIDER" in
     ;;
 esac
 
+if [[ -z "$JTSR_VERIFY_SOURCE_RUN" ]]; then
+  install -d -m 0700 -o "$JTSR_SCANNER_UID" -g "$JTSR_SCANNER_GID" "$JTSR_GROK_AUTH_ROOT"
+  RUNTIME_DOCKER_ARGS+=(
+    --mount "type=bind,src=$JTSR_GROK_AUTH_ROOT,dst=/scan/grok-auth"
+    --env GROK_HOME=/scan/grok-auth
+  )
+  GROK_AUTH_CHECK_ARGS=(
+    run --rm
+    --name "jtsr-grok-auth-check-$$"
+    --user "$JTSR_SCANNER_UID:$JTSR_SCANNER_GID"
+    --read-only
+    --cap-drop ALL
+    --security-opt no-new-privileges
+    --pids-limit 128
+    --memory 1g
+    --cpus 1
+    --network "$JTSR_DOCKER_NETWORK"
+    --tmpfs "/tmp:rw,nosuid,nodev,noexec,size=128m,uid=$JTSR_SCANNER_UID,gid=$JTSR_SCANNER_GID"
+    --tmpfs "/home/scanner:rw,nosuid,nodev,noexec,size=64m,uid=$JTSR_SCANNER_UID,gid=$JTSR_SCANNER_GID"
+    --mount "type=bind,src=$JTSR_GROK_AUTH_ROOT,dst=/scan/grok-auth"
+    --env GROK_HOME=/scan/grok-auth
+    --env HOME=/home/scanner
+    --env TMPDIR=/tmp
+    --env NO_COLOR=1
+  )
+  for proxy_name in HTTPS_PROXY HTTP_PROXY ALL_PROXY NO_PROXY; do
+    if [[ -n "${!proxy_name:-}" ]]; then
+      GROK_AUTH_CHECK_ARGS+=(--env "$proxy_name")
+    fi
+  done
+  if ! docker "${GROK_AUTH_CHECK_ARGS[@]}" "$JTSR_IMAGE" grok models >/dev/null; then
+    fail "Grok Build sign-in is missing or expired; run the installed grok-auth@login service"
+  fi
+fi
+
 # Retention is restricted to run directories created by this script. State, status,
 # and arbitrary directories under the output root are never selected.
 if [[ -z "$JTSR_VERIFY_SOURCE_RUN" ]]; then
@@ -304,6 +348,8 @@ SCAN_ARGS=(
   --output-root /scan/output
   --run-id "$RUN_ID"
   --cli-bin /usr/local/bin/codex-security
+  --grok-bin /usr/local/bin/grok
+  --enable-profile triage-grok
 )
 SCAN_ARGS+=("${RUNTIME_SCAN_ARGS[@]}")
 if [[ -n "$JTSR_SCOPE" ]]; then

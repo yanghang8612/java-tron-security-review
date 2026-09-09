@@ -27,6 +27,8 @@ class SystemConfig:
 class Profile:
     name: str
     description: str
+    engine: str
+    optional: bool
     provider: str
     model: str
     effort: str
@@ -42,6 +44,7 @@ class Profile:
     max_time_hours: float | None = None
     per_finding: bool = False
     candidate_source_profile: str | None = None
+    candidate_source_profiles: tuple[str, ...] = ()
     max_candidates: int | None = None
     per_finding_max_cost: float | None = None
     per_finding_timeout_minutes: float | None = None
@@ -126,9 +129,31 @@ def load_config(root: Path | None = None) -> AppConfig:
         scan_mode = values.get("scan_mode", "standard")
         if scan_mode not in {"standard", "deep"}:
             raise ValueError(f"profiles.{name}.scan_mode is invalid: {scan_mode!r}")
+        engine = values.get("engine", "codex-security")
+        if engine not in {"codex-security", "grok-build"}:
+            raise ValueError(f"profiles.{name}.engine is invalid: {engine!r}")
+        legacy_source = values.get("candidate_source_profile")
+        configured_sources = values.get("candidate_source_profiles", [])
+        if not isinstance(configured_sources, list) or any(
+            not isinstance(value, str) or not value
+            for value in configured_sources
+        ):
+            raise ValueError(
+                f"profiles.{name}.candidate_source_profiles must be a list of profile names"
+            )
+        if legacy_source and configured_sources:
+            raise ValueError(
+                f"profiles.{name} must use candidate_source_profile or "
+                "candidate_source_profiles, not both"
+            )
+        source_profiles = tuple(configured_sources or ([legacy_source] if legacy_source else []))
+        if len(source_profiles) != len(set(source_profiles)):
+            raise ValueError(f"profiles.{name}.candidate_source_profiles contains duplicates")
         profile = Profile(
             name=name,
             description=values.get("description", ""),
+            engine=engine,
+            optional=bool(values.get("optional", False)),
             provider=values["provider"],
             model=values["model"],
             effort=values["effort"],
@@ -150,7 +175,8 @@ def load_config(root: Path | None = None) -> AppConfig:
                 else None
             ),
             per_finding=bool(values.get("per_finding", False)),
-            candidate_source_profile=values.get("candidate_source_profile"),
+            candidate_source_profile=source_profiles[0] if source_profiles else None,
+            candidate_source_profiles=source_profiles,
             max_candidates=values.get("max_candidates"),
             per_finding_max_cost=(
                 float(values["per_finding_max_cost"])
@@ -181,10 +207,15 @@ def load_config(root: Path | None = None) -> AppConfig:
                 raise ValueError(f"profiles.{name}.{field} must be finite and positive")
         if type(profile.max_retries) is not int or profile.max_retries not in {0, 1}:
             raise ValueError(f"profiles.{name}.max_retries must be 0 or 1")
+        if profile.engine == "grok-build" and profile.per_finding:
+            raise ValueError(
+                f"profiles.{name}: Grok Build profiles are discovery-only; "
+                "use a Codex Security verifier"
+            )
         if profile.per_finding:
-            if not profile.candidate_source_profile:
+            if not profile.candidate_source_profiles:
                 raise ValueError(
-                    f"profiles.{name}.candidate_source_profile is required for per-finding review"
+                    f"profiles.{name}.candidate_source_profiles is required for per-finding review"
                 )
             if not profile.max_candidates or profile.max_candidates < 1:
                 raise ValueError(
@@ -240,14 +271,12 @@ def load_config(root: Path | None = None) -> AppConfig:
 
     profile_names = {profile.name for profile in profiles}
     for profile in profiles:
-        if (
-            profile.per_finding
-            and profile.candidate_source_profile not in profile_names
-        ):
-            raise ValueError(
-                f"profiles.{profile.name}.candidate_source_profile "
-                f"{profile.candidate_source_profile!r} does not exist"
-            )
+        for source in profile.candidate_source_profiles:
+            if source not in profile_names:
+                raise ValueError(
+                    f"profiles.{profile.name}.candidate_source_profiles entry "
+                    f"{source!r} does not exist"
+                )
 
     scopes: list[Scope] = []
     seen_scope_ids: set[str] = set()

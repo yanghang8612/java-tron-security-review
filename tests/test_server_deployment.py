@@ -112,6 +112,22 @@ class ServerDeploymentTests(unittest.TestCase):
         self.assertIn("@openai/codex-linux-arm64", package["optionalDependencies"])
         self.assertIn("@openai/codex-linux-x64", package["optionalDependencies"])
 
+    def test_grok_build_is_pinned_and_bypass_permissions_are_locked(self) -> None:
+        container = ROOT / "deploy" / "container"
+        package = json.loads((container / "package.json").read_text(encoding="utf-8"))
+        lock = json.loads((container / "package-lock.json").read_text(encoding="utf-8"))
+        version = package["dependencies"]["@xai-official/grok"]
+        self.assertEqual(
+            lock["packages"]["node_modules/@xai-official/grok"]["version"],
+            version,
+        )
+        dockerfile = (container / "Dockerfile").read_text(encoding="utf-8")
+        self.assertIn("grok --version", dockerfile)
+        requirements = (container / "grok-requirements.toml").read_text(encoding="utf-8")
+        self.assertIn("disable_bypass_permissions_mode = true", requirements)
+        for tool in ("bash", "edit", "write", "webfetch", "websearch", "mcptool"):
+            self.assertIn(f'tool = "{tool}"', requirements)
+
     def test_codex_security_version_is_pinned_consistently(self) -> None:
         container = ROOT / "deploy" / "container"
         package = json.loads((container / "package.json").read_text(encoding="utf-8"))
@@ -174,6 +190,25 @@ class ServerDeploymentTests(unittest.TestCase):
             "EnvironmentFile=/etc/java-tron-security-review/jtsr.env", unit
         )
         self.assertIn("auth-chatgpt %i", unit)
+        self.assertIn("NoNewPrivileges=true", unit)
+
+    def test_grok_subscription_auth_is_separate_and_server_enabled(self) -> None:
+        runner = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")
+        auth = (SERVER / "auth-grok.sh").read_text(encoding="utf-8")
+        environment = (SERVER / "jtsr.env.example").read_text(encoding="utf-8")
+        unit = (
+            SERVER / "java-tron-security-review-grok-auth@.service"
+        ).read_text(encoding="utf-8")
+        self.assertIn("JTSR_GROK_AUTH_ROOT=/var/lib/java-tron-security-review/grok-auth", environment)
+        self.assertIn("dst=/scan/grok-auth", runner)
+        self.assertIn("GROK_HOME=/scan/grok-auth", runner)
+        self.assertIn("--enable-profile triage-grok", runner)
+        self.assertIn("--grok-bin /usr/local/bin/grok", runner)
+        self.assertIn("grok models", runner)
+        self.assertIn("CLI_ARGS=(login --device-auth)", auth)
+        self.assertIn("CLI_ARGS=(models)", auth)
+        self.assertIn("CLI_ARGS=(logout)", auth)
+        self.assertIn("auth-grok %i", unit)
         self.assertIn("NoNewPrivileges=true", unit)
 
 

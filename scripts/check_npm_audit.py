@@ -12,7 +12,10 @@ import sys
 ROOT = Path(__file__).resolve().parents[1]
 CONTAINER_RUNTIME = ROOT / "deploy/container"
 EXPECTED_ADVISORY_URLS = {
-    "extract-zip": {"https://github.com/advisories/GHSA-jmr9-qjv8-65gv"},
+    "extract-zip": {
+        "https://github.com/advisories/GHSA-jmr9-qjv8-65gv",
+        "https://github.com/advisories/GHSA-7pqw-9j4j-h8q3",
+    },
     "fast-uri": {
         "https://github.com/advisories/GHSA-5jgf-p345-68v8",
         "https://github.com/advisories/GHSA-f65p-4m7j-42xc",

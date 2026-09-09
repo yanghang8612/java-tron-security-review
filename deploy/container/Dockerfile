@@ -2,6 +2,7 @@ FROM node:24-bookworm-slim@sha256:3638d9a6fe4030bd716be989438248074489337ba32756
 
 ARG CODEX_SECURITY_VERSION=0.1.25
 ARG CODEX_VERSION=0.153.4
+ARG GROK_VERSION=1.0.13
 
 RUN apt-get -o Acquire::http::No-Cache=true update \
     && apt-get -o Acquire::http::No-Cache=true install \
@@ -29,16 +30,23 @@ RUN --mount=type=cache,id=jtsr-npm-node24-v1,target=/root/.npm,sharing=locked \
       = "$CODEX_VERSION" \
     && test "$(node -p 'require("/opt/codex-security/node_modules/@openai/codex-sdk/package.json").version')" \
       = "$CODEX_VERSION" \
+    && test "$(node -p 'require("/opt/codex-security/node_modules/@xai-official/grok/package.json").version')" \
+      = "$GROK_VERSION" \
     && ln -s \
       /opt/codex-security/node_modules/.bin/codex-security \
       /usr/local/bin/codex-security \
+    && ln -s \
+      /opt/codex-security/node_modules/.bin/grok \
+      /usr/local/bin/grok \
     && codex-security --version \
-    && /opt/codex-security/node_modules/.bin/codex --version
+    && /opt/codex-security/node_modules/.bin/codex --version \
+    && grok --version
 
 COPY src /opt/jtsr/src
 COPY config /opt/jtsr/config
 COPY knowledge /opt/jtsr/knowledge
 COPY prompts /opt/jtsr/prompts
+COPY --chmod=0644 deploy/container/grok-requirements.toml /etc/grok/requirements.toml
 COPY --chmod=0755 deploy/container/jtsr /usr/local/bin/jtsr
 
 ENV PATH="/opt/codex-security/node_modules/.bin:${PATH}" \

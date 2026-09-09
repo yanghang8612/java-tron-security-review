@@ -1,0 +1,14 @@
+[ui]
+# Prevent any invocation or local preference from enabling bypass-permissions mode.
+disable_bypass_permissions_mode = true
+
+[permission]
+# Deny rules win over repository-controlled project configuration.
+rules = [
+  { action = "deny", tool = "bash" },
+  { action = "deny", tool = "edit" },
+  { action = "deny", tool = "write" },
+  { action = "deny", tool = "webfetch" },
+  { action = "deny", tool = "websearch" },
+  { action = "deny", tool = "mcptool" },
+]

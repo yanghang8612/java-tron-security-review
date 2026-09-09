@@ -64,6 +64,32 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(first.jobs[0].scope.id, "tvm-entry-context")
         self.assertEqual(second.jobs[0].scope.id, "tvm-opcode-dispatch")
 
+    def test_optional_grok_challenger_is_enabled_explicitly(self) -> None:
+        default = build_plan(self.config, "daily-tvm", day_of_year=1)
+        self.assertNotIn("triage-grok", [job.profile.name for job in default.jobs])
+        enabled = build_plan(
+            self.config,
+            "daily-tvm",
+            day_of_year=1,
+            enabled_profiles=("triage-grok",),
+        )
+        self.assertEqual(
+            [job.profile.name for job in enabled.jobs],
+            ["triage", "triage-grok", "verifier"],
+        )
+        verifier = enabled.jobs[-1].profile
+        self.assertEqual(
+            verifier.candidate_source_profiles, ("triage", "triage-grok")
+        )
+
+    def test_non_optional_profile_cannot_be_enabled(self) -> None:
+        with self.assertRaisesRegex(ValueError, "optional profiles only"):
+            build_plan(
+                self.config,
+                "daily-tvm",
+                enabled_profiles=("triage",),
+            )
+
     def test_discovery_has_more_reasoning_than_per_finding_verification(self) -> None:
         plan = build_plan(self.config, "daily-tvm", day_of_year=1)
         triage, verifier = [job.profile for job in plan.jobs]

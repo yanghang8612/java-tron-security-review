@@ -12,6 +12,19 @@ first_response_timeout_minutes = 10.0
 idle_timeout_minutes = 30.0
 prompt = "prompts/scan.md"
 
+[profiles.triage-grok]
+description = "Independent Grok Build challenger for the daily TVM execution facet"
+engine = "grok-build"
+optional = true
+provider = "grok-subscription"
+model = "grok-build"
+effort = "high"
+scan_mode = "standard"
+modes = ["daily-tvm"]
+minimum_risk = "low"
+max_time_hours = 3.0
+prompt = "prompts/grok-challenger.md"
+
 [profiles.primary]
 description = "Primary investigator for nightly and manual reviews"
 provider = "openai"
@@ -37,7 +50,7 @@ minimum_risk = "high"
 max_cost = 240.0
 prompt = "prompts/skeptic.md"
 per_finding = true
-candidate_source_profile = "triage"
+candidate_source_profiles = ["triage", "triage-grok"]
 max_candidates = 8
 per_finding_max_cost = 30.0
 per_finding_timeout_minutes = 60.0

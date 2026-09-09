@@ -33,6 +33,12 @@ def _common_target_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--head", default="HEAD", help="head revision; default: HEAD")
     parser.add_argument("--scope", help="configured scope id override")
     parser.add_argument("--iso-week", type=int, help="override ISO week for rotation tests")
+    parser.add_argument(
+        "--enable-profile",
+        action="append",
+        default=[],
+        help="enable a configured optional profile (repeatable)",
+    )
 
 
 def _target(args: argparse.Namespace, default: Path) -> Path:
@@ -55,6 +61,7 @@ def _plan_inputs(config, args):
         files=files,
         scope_id=args.scope,
         iso_week=args.iso_week,
+        enabled_profiles=tuple(args.enable_profile or ()),
     )
     return target, base_commit, head_commit, plan
 
@@ -136,6 +143,7 @@ def cmd_scan(args: argparse.Namespace) -> int:
         run_id=run_id,
         auth=args.auth or config.system.default_auth,
         cli_bin=args.cli_bin,
+        grok_bin=args.grok_bin,
         base_commit=base_commit,
         head_commit=head_commit,
         dry_run=args.dry_run,
@@ -168,7 +176,7 @@ def cmd_summary(args: argparse.Namespace) -> int:
 
 def cmd_verify(args: argparse.Namespace) -> int:
     from .reverify import failed_verification_inputs, verification_inputs
-    from .verification import collect_candidates
+    from .verification import collect_candidates_from_jobs
     config = load_config(args.root)
     target = _target(args, config.system.default_target)
     source = args.source_run.absolute()
@@ -180,8 +188,14 @@ def cmd_verify(args: argparse.Namespace) -> int:
         queues = []
         for job in plan.jobs:
             if job.profile.per_finding:
-                source_job = next(j for j in plan.jobs if j.profile.name == job.profile.candidate_source_profile)
-                intake = collect_candidates(source, source_job.id)
+                source_jobs = [
+                    source_job
+                    for source_job in plan.jobs
+                    if source_job.profile.name in job.profile.candidate_source_profiles
+                ]
+                intake = collect_candidates_from_jobs(
+                    source, [source_job.id for source_job in source_jobs]
+                )
                 if retry_selection is not None:
                     intake["candidates"] = [entry for entry in intake["candidates"] if entry["source_fingerprint"] in retry_selection[job.id]]
                 queues.append({"job_id": job.id, "candidate_count": len(intake["candidates"]),
@@ -259,6 +273,7 @@ def build_parser() -> argparse.ArgumentParser:
         help="override every selected profile model (required for a Bedrock override)",
     )
     scan.add_argument("--cli-bin", type=_path, help="preinstalled codex-security executable")
+    scan.add_argument("--grok-bin", type=_path, help="preinstalled Grok Build executable")
     scan.add_argument("--knowledge-base", type=_path, action="append")
     scan.add_argument("--dry-run", action="store_true")
     scan.set_defaults(handler=cmd_scan)

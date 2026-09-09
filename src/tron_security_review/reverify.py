@@ -8,7 +8,12 @@ import re
 
 from .gitops import target_metadata
 from .planner import build_plan
-from .verification import SAFETY_MARKERS, collect_candidates, read_artifact_text, read_json
+from .verification import (
+    SAFETY_MARKERS,
+    collect_candidates_from_jobs,
+    read_artifact_text,
+    read_json,
+)
 
 
 def verification_inputs(config, target: Path, source_run: Path):
@@ -43,15 +48,34 @@ def verification_inputs(config, target: Path, source_run: Path):
     scope = next(iter(scopes))
     if not isinstance(scope, str):
         raise ValueError("source scope is invalid")
-    plan = build_plan(config, original["run_mode"], scope_id=scope)
+    optional_names = {profile.name for profile in config.profiles if profile.optional}
+    recorded_profiles = {
+        job.get("profile", {}).get("name")
+        for job in jobs
+        if isinstance(job.get("profile"), dict)
+    }
+    enabled_profiles = tuple(sorted(optional_names & recorded_profiles))
+    plan = build_plan(
+        config,
+        original["run_mode"],
+        scope_id=scope,
+        enabled_profiles=enabled_profiles,
+    )
     sources = [job for job in plan.jobs if job.profile.per_finding]
     if not sources:
         raise ValueError("no per-finding verifier is configured for the source plan")
     for verifier in sources:
-        source = next((job for job in plan.jobs if job.profile.name == verifier.profile.candidate_source_profile), None)
-        recorded = [job for job in jobs if source and job.get("id") == source.id]
-        if source is None or len(recorded) != 1 or recorded[0].get("paths") != list(source.paths):
-            raise ValueError("source scope differs from current configuration; inspect before rechecking")
+        source_jobs = [
+            job
+            for job in plan.jobs
+            if job.profile.name in verifier.profile.candidate_source_profiles
+        ]
+        if not source_jobs:
+            raise ValueError("candidate source profile is missing from the current plan")
+        for source in source_jobs:
+            recorded = [job for job in jobs if job.get("id") == source.id]
+            if len(recorded) != 1 or recorded[0].get("paths") != list(source.paths):
+                raise ValueError("source scope differs from current configuration; inspect before rechecking")
     return plan, revision, {**manifest, "target_revision": revision}
 
 
@@ -72,8 +96,14 @@ def failed_verification_inputs(plan, source_run, source_manifest, previous_run):
         queue = read_json(previous_run / job.id / "verification-manifest.json", previous_run)
         if not isinstance(queue, dict) or queue.get("status") != "completed" or not isinstance(queue.get("candidates"), list):
             raise ValueError("previous review queue must be completed")
-        source_job = next(j for j in plan.jobs if j.profile.name == job.profile.candidate_source_profile)
-        intake = collect_candidates(source_run, source_job.id)
+        source_jobs = [
+            source_job
+            for source_job in plan.jobs
+            if source_job.profile.name in job.profile.candidate_source_profiles
+        ]
+        intake = collect_candidates_from_jobs(
+            source_run, [source_job.id for source_job in source_jobs]
+        )
         if intake["errors"]:
             raise ValueError("cannot select retry candidates from incomplete source artifacts")
         known = {entry["source_fingerprint"] for entry in intake["candidates"]}

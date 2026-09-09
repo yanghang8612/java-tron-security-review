@@ -1,0 +1,19 @@
+[Unit]
+Description=Manage java-tron security-review Grok Build subscription authentication (%i)
+Documentation=https://docs.x.ai/build/enterprise
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=root
+Group=root
+EnvironmentFile=/etc/java-tron-security-review/jtsr.env
+ExecStart=/usr/local/libexec/java-tron-security-review/auth-grok %i
+UMask=0077
+TimeoutStartSec=15m
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=full

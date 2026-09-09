@@ -11,6 +11,8 @@ SARIF, and keeps scan state outside the target worktree. It is advisory and read
 
 - PR diff planning with Astra/xhigh discovery and isolated, Astra/high per-finding falsification for
   High/Critical candidates.
+- An optional Grok Build subscription challenger for the server's daily TVM facet. Its hypotheses
+  are merged with Astra candidates but never promoted by model agreement alone.
 - A GPT-5.5/high fallback only for explicitly recognized usage/rate limits or model availability
   failures. Safety refusals, local budget/time limits and unknown errors do not trigger fallback.
 - One-facet-per-day TVM execution-flow reviews, nightly incremental scans and a seven-domain weekly
@@ -40,6 +42,7 @@ trigger, impact, proof and reachability evidence.
 - Codex Security access.
 - ChatGPT sign-in for local scans, persisted device sign-in for the manual server deployment, or
   an OpenAI API key for CI.
+- A Grok subscription with Grok Build access for the optional server challenger lane.
 - An authorized java-tron checkout.
 
 The Codex Security CLI version is pinned in `config/system.toml`. CI installs the package outside
@@ -133,6 +136,8 @@ var/scans/<run-id>/
 │       ├── findings.json
 │       ├── coverage.json
 │       └── report.md
+├── triage-grok/
+│   └── results/               # structured challenger candidates; no formal findings
 └── verifier/
     ├── verification-manifest.json
     └── candidates/
@@ -172,8 +177,9 @@ java-tron revision into temporary storage, selects one TVM execution facet, and 
 It requires no AWS-managed build or scheduler services. The scanner opens no network port;
 the optional report portal publishes a loopback-only backend behind your existing HTTP gateway.
 
-OpenAI authentication can use a persisted ChatGPT device sign-in or a dedicated API key. ChatGPT
-credentials are kept in a private directory separate from source checkouts and scan reports.
+OpenAI authentication can use a persisted ChatGPT device sign-in or a dedicated API key. The
+server enables a separate Grok Build device sign-in for its independent daily challenger. Both
+credential stores are private and separate from source checkouts, reports, and each other.
 
 See [single-server deployment](docs/server-deployment.md) for installation, credentials, resource
 limits, retention, acceptance testing and rollback.
@@ -214,3 +220,6 @@ The implementation tracks the official OpenAI documentation for the
 [Codex Security CLI](https://learn.chatgpt.com/docs/security/cli),
 [CLI reference](https://learn.chatgpt.com/docs/security/cli/reference), and
 [CI integration](https://learn.chatgpt.com/docs/security/cli/ci).
+The optional challenger follows the official xAI documentation for
+[Grok Build headless use](https://docs.x.ai/build/cli/headless-scripting) and
+[enterprise device authentication](https://docs.x.ai/build/enterprise).

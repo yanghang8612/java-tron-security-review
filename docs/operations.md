@@ -45,7 +45,7 @@ Startup/preflight and reconnect heartbeats do not reset the progress watchdog. S
 [candidate verification](candidate-verification.md) for retry selection and diagnostic artifacts.
 Candidates beyond the configured count remain partial coverage and keep exit `2`.
 
-The default triage uses Astra/xhigh with a six-hour hard process-group timeout, a ten-minute
+The default Codex Security triage uses Astra/xhigh with a six-hour hard process-group timeout, a ten-minute
 first-progress timeout and a thirty-minute no-progress timeout. Verification uses Astra/high and
 bounds at most eight candidates to one shared 60-minute window each, including a same-model retry.
 The pinned Codex Security CLI 0.1.25 does not provide an Astra
@@ -55,6 +55,14 @@ manifests mark them as unenforced and the wrapper omits the incompatible flag. D
 hard billing caps. GPT-5.5 fallback also omits `--max-cost`; it is limited to three candidates and
 thirty minutes per candidate at `high` effort. None of these values are ChatGPT subscription
 charges or quota balances.
+
+The manually deployed server explicitly enables an otherwise optional Grok Build discovery lane.
+It gets three hours for the same one-facet scope and emits a bounded structured candidate list.
+Malformed whole-run output, expired subscription authentication, or partial coverage remains
+partial/failure evidence; it is never silently converted into an empty clean result. A candidate
+missing current-production gate evidence is discarded and recorded rather than sent to verification.
+Candidate agreement across Grok and Astra is provenance only. Astra still falsifies each candidate
+independently before anything can be marked supported.
 
 Codex Security 0.1.25 normally resolves Codex 0.149.1, which the Astra service rejects as too old.
 The runtime lockfile therefore applies a narrow compatibility override to the official stable Codex
@@ -111,6 +119,9 @@ current path and names one precise missing proof.
 - Check ChatGPT device authentication with
   `systemctl start java-tron-security-review-auth@status.service`; a missing stored login fails
   before the source checkout and should be treated as an operational alert.
+- Check Grok Build subscription authentication with
+  `systemctl start java-tron-security-review-grok-auth@status.service`; keep
+  `/var/lib/java-tron-security-review/grok-auth` out of report archives as well.
 - Keep `/var/lib/java-tron-security-review/auth` out of report archives and backups unless the
   backup is explicitly approved for account credentials and encrypted accordingly.
 - Monitor disk use under `/var/lib/java-tron-security-review/scans`; the default retention is 90

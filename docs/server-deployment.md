@@ -18,7 +18,8 @@ one non-root Docker container (dedicated uid 10001, no capabilities, bounded CPU
 the seccomp profile pinned to Codex Security 0.1.25, with its Codex runtime compatibility override
 pinned to 0.153.4)
         |
-        +--> daily-tvm triage profile
+        +--> daily-tvm Astra triage profile
+        +--> daily-tvm Grok Build challenger profile
         +--> daily-tvm independent verifier profile
         |
         v
@@ -43,10 +44,12 @@ The mandatory evidence gate rejects proposal-disabled, pre-hard-fork, historical
 test-only branches from findings and candidate-shaped deferred work unless a plausibly current
 production path is independently established.
 
-The default profile pair uses `gpt-6-astra` at `xhigh` for discovery, then gives each triage
-candidate its own `gpt-6-astra` at `high` skeptical-verifier invocation. This assigns more
-reasoning to cross-module discovery while keeping verification focused on one candidate; the
-evidence and production-reachability gates remain unchanged.
+The server runs two independent discovery lanes: `gpt-6-astra` at `xhigh` and Grok Build through
+the signed-in Grok subscription. Their candidate sets are unioned and deduplicated; agreement is
+recorded only as provenance and never treated as proof. Every selected candidate then gets its own
+`gpt-6-astra` at `high` skeptical-verifier invocation. Grok receives only the selected facet and
+is constrained to read/grep tools, `dontAsk` fail-closed permissions, a strict sandbox, a read-only
+source mount, and a root-owned policy that disables bypass-permissions mode.
 Only explicitly recognized usage/rate limits or model-availability errors are retried with
 `gpt-5.5` at `high`. Safety refusals and local budget/time limits never trigger model fallback.
 At most eight candidates are selected in severity order. Discovery has a six-hour process-group
@@ -62,7 +65,7 @@ the ChatGPT subscription bill or guarantee complete coverage.
 
 - A systemd-based Linux host with Docker Engine running.
 - `git` and `flock` (normally supplied by the `util-linux` package).
-- Outbound HTTPS to GitHub and the configured model provider.
+- Outbound HTTPS to GitHub, OpenAI, `cli-chat-proxy.grok.com`, and `auth.x.ai`.
 - Enough capacity for the default container limits: 4 CPUs, 8 GiB RAM, and 512 processes.
 - An authorized, private location for scan reports.
 - Unprivileged user namespaces for Codex Security's inner filesystem sandbox. On hosts exposing
@@ -102,7 +105,7 @@ The new-install default is `JTSR_AUTH=chatgpt`. Keep `OPENAI_API_KEY` empty and 
 empty to retain the configured profile routing. The installer deliberately does not enable the timer on
 its first run, so an unauthenticated account cannot start an unattended scan.
 
-Start device authentication and follow its journal from the EC2 terminal:
+Start ChatGPT device authentication and follow its journal from the EC2 terminal:
 
 ```bash
 sudo systemctl start --no-block java-tron-security-review-auth@login.service
@@ -116,6 +119,21 @@ check the stored sign-in:
 ```bash
 sudo systemctl start java-tron-security-review-auth@status.service
 sudo journalctl -u java-tron-security-review-auth@status.service -n 30 --no-pager
+```
+
+Then authenticate Grok Build separately. This uses the Grok subscription pool, not xAI API
+billing:
+
+```bash
+sudo systemctl start --no-block java-tron-security-review-grok-auth@login.service
+sudo journalctl -fu java-tron-security-review-grok-auth@login.service
+```
+
+Open the displayed xAI URL, enter the device code, and then verify that the account exposes models:
+
+```bash
+sudo systemctl start java-tron-security-review-grok-auth@status.service
+sudo journalctl -u java-tron-security-review-grok-auth@status.service -n 30 --no-pager
 ```
 
 Run one acceptance scan and inspect it before enabling the schedule:
@@ -154,6 +172,7 @@ The host wrapper writes results beneath:
     ├── run-manifest.json
     ├── aggregate.json
     ├── triage-<tvm-facet>/
+    ├── triage-grok-<tvm-facet>/
     └── verifier-<tvm-facet>/
         ├── verification-manifest.json
         └── candidates/<candidate>/<model-attempt>/
@@ -192,6 +211,20 @@ status checks, and scheduled scans all use the same managed Codex home.
 ```bash
 sudo systemctl disable --now java-tron-security-review.timer
 sudo systemctl start java-tron-security-review-auth@logout.service
+```
+
+### Grok Build subscription device sign-in
+
+The independent challenger stores refresh credentials under
+`/var/lib/java-tron-security-review/grok-auth`, mounted as
+`GROK_HOME=/scan/grok-auth`. It is not an xAI API key and is never supplied to Codex Security.
+The daily wrapper runs `grok models` before cloning or scanning and fails early if the sign-in is
+missing or expired. The directory is mode `0700`, belongs to the non-login scanner UID, and must be
+excluded from report archives and ordinary backups. Revoke it with:
+
+```bash
+sudo systemctl disable --now java-tron-security-review.timer
+sudo systemctl start java-tron-security-review-grok-auth@logout.service
 ```
 
 Codex Security access still depends on the signed-in account. `20x` is not a CLI setting, and the

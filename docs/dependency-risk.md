@@ -2,9 +2,11 @@
 
 ## Codex Security 0.1.25 transitive advisories
 
-`npm audit` currently reports three High-severity and one Moderate-severity production advisories
+`npm audit` currently reports three High-severity and one Moderate-severity affected dependency
+groups (the transitive `extract-zip` group contains two closely related advisories)
 through the pinned `@openai/codex-security@0.1.25`. They affect `extract-zip@2.0.1`
-([GHSA-jmr9-qjv8-65gv](https://github.com/advisories/GHSA-jmr9-qjv8-65gv)),
+([GHSA-jmr9-qjv8-65gv](https://github.com/advisories/GHSA-jmr9-qjv8-65gv) and
+[GHSA-7pqw-9j4j-h8q3](https://github.com/advisories/GHSA-7pqw-9j4j-h8q3)),
 `fast-uri@3.1.5` (four host-confusion/SSRF advisories) and `fflate@0.8.2`
 (malformed ZIP64 infinite loop). npm publishes no fixed version allowed by the current upstream
 dependency graph.
