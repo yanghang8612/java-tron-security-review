@@ -59,7 +59,7 @@ class RunnerTests(unittest.TestCase):
         )
         self.assertLessEqual(primary_worst_case, verifier.max_cost)
         self.assertEqual(verifier.fallback_model, "gpt-5.5")
-        self.assertEqual(verifier.effort, "high")
+        self.assertEqual(verifier.effort, "xhigh")
         self.assertEqual(verifier.fallback_effort, "high")
         self.assertEqual(verifier.max_fallbacks, 3)
         self.assertEqual(verifier.per_finding_max_cost, 30)
@@ -260,7 +260,7 @@ class RunnerTests(unittest.TestCase):
                 model = command[command.index("--model") + 1]
                 if scan_dir.parent.name == "triage-tvm-opcode-dispatch":
                     self.assertEqual(model, "gpt-6-astra")
-                    self.assertEqual(command[command.index("--effort") + 1], "xhigh")
+                    self.assertEqual(command[command.index("--effort") + 1], "max")
                     self.assertNotIn("--max-cost", command)
                     self.assertEqual(timeout_seconds, 21600)
                     (scan_dir / "findings.json").write_text(
@@ -285,7 +285,7 @@ class RunnerTests(unittest.TestCase):
                     )
                     return 0
                 if model == "gpt-6-astra":
-                    self.assertEqual(command[command.index("--effort") + 1], "high")
+                    self.assertEqual(command[command.index("--effort") + 1], "xhigh")
                     self.assertNotIn("--max-cost", command)
                     stderr_path.write_text(
                         ("Estimated cost: $2.0 of $30.0 limit\n" if known_usage else "") + failure_message,

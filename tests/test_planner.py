@@ -64,6 +64,17 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(first.jobs[0].scope.id, "tvm-entry-context")
         self.assertEqual(second.jobs[0].scope.id, "tvm-opcode-dispatch")
 
+    def test_every_daily_tvm_facet_receives_complete_vm_context(self) -> None:
+        required = {
+            "actuator/src/main/java/org/tron/core/vm",
+            "common/src/main/java/org/tron/core/vm",
+        }
+        daily_scopes = [scope for scope in self.config.scopes if scope.daily_tvm]
+        self.assertEqual(len(daily_scopes), 8)
+        for scope in daily_scopes:
+            with self.subTest(scope=scope.id):
+                self.assertTrue(required.issubset(scope.paths))
+
     def test_optional_grok_challenger_is_enabled_explicitly(self) -> None:
         default = build_plan(self.config, "daily-tvm", day_of_year=1)
         self.assertNotIn("triage-grok", [job.profile.name for job in default.jobs])
@@ -94,8 +105,8 @@ class PlannerTests(unittest.TestCase):
         plan = build_plan(self.config, "daily-tvm", day_of_year=1)
         triage, verifier = [job.profile for job in plan.jobs]
         self.assertEqual((triage.model, triage.effort, triage.max_cost),
-                         ("gpt-6-astra", "xhigh", 200.0))
-        self.assertEqual((verifier.model, verifier.effort), ("gpt-6-astra", "high"))
+                         ("gpt-6-astra", "max", 200.0))
+        self.assertEqual((verifier.model, verifier.effort), ("gpt-6-astra", "xhigh"))
         self.assertTrue(verifier.per_finding)
         self.assertEqual(verifier.candidate_source_profile, "triage")
 

@@ -14,9 +14,9 @@ patterns = [
   "common/src/main/java/org/tron/core/vm/**",
 ]
 
-# Daily TVM reviews deliberately select one narrow execution facet.  Each facet
-# includes its cross-module callers and sinks so --path scoping does not reduce
-# the review to isolated files.
+# Daily TVM reviews deliberately select one execution facet, while every facet
+# receives the complete TVM packages plus its cross-module callers and sinks.
+# This preserves deep flow analysis without hiding interactions elsewhere in VM.
 
 [[scopes]]
 id = "tvm-entry-context"
@@ -25,6 +25,8 @@ risk = "critical"
 rotation = false
 daily_tvm = true
 paths = [
+  "actuator/src/main/java/org/tron/core/vm",
+  "common/src/main/java/org/tron/core/vm",
   "framework/src/main/java/org/tron/common/runtime/RuntimeImpl.java",
   "chainbase/src/main/java/org/tron/core/db/TransactionTrace.java",
   "actuator/src/main/java/org/tron/core/actuator/VMActuator.java",
@@ -51,6 +53,8 @@ risk = "critical"
 rotation = false
 daily_tvm = true
 paths = [
+  "actuator/src/main/java/org/tron/core/vm",
+  "common/src/main/java/org/tron/core/vm",
   "actuator/src/main/java/org/tron/core/vm/VM.java",
   "actuator/src/main/java/org/tron/core/vm/OperationRegistry.java",
   "actuator/src/main/java/org/tron/core/vm/EnergyCost.java",
@@ -76,6 +80,8 @@ risk = "critical"
 rotation = false
 daily_tvm = true
 paths = [
+  "actuator/src/main/java/org/tron/core/vm",
+  "common/src/main/java/org/tron/core/vm",
   "actuator/src/main/java/org/tron/core/vm/program/Program.java",
   "actuator/src/main/java/org/tron/core/vm/MessageCall.java",
   "actuator/src/main/java/org/tron/core/vm/program/invoke",
@@ -103,6 +109,8 @@ risk = "critical"
 rotation = false
 daily_tvm = true
 paths = [
+  "actuator/src/main/java/org/tron/core/vm",
+  "common/src/main/java/org/tron/core/vm",
   "actuator/src/main/java/org/tron/core/vm/program/Program.java",
   "actuator/src/main/java/org/tron/core/vm/program/ContractState.java",
   "actuator/src/main/java/org/tron/core/vm/program/Storage.java",
@@ -129,6 +137,8 @@ risk = "critical"
 rotation = false
 daily_tvm = true
 paths = [
+  "actuator/src/main/java/org/tron/core/vm",
+  "common/src/main/java/org/tron/core/vm",
   "actuator/src/main/java/org/tron/core/vm/PrecompiledContracts.java",
   "actuator/src/main/java/org/tron/core/actuator/VMActuator.java",
   "actuator/src/main/java/org/tron/core/vm/EnergyCost.java",
@@ -153,6 +163,8 @@ risk = "critical"
 rotation = false
 daily_tvm = true
 paths = [
+  "actuator/src/main/java/org/tron/core/vm",
+  "common/src/main/java/org/tron/core/vm",
   "actuator/src/main/java/org/tron/core/vm/VM.java",
   "actuator/src/main/java/org/tron/core/vm/EnergyCost.java",
   "actuator/src/main/java/org/tron/core/vm/program/Program.java",
@@ -179,6 +191,8 @@ risk = "critical"
 rotation = false
 daily_tvm = true
 paths = [
+  "actuator/src/main/java/org/tron/core/vm",
+  "common/src/main/java/org/tron/core/vm",
   "common/src/main/java/org/tron/core/vm/config/VMConfig.java",
   "actuator/src/main/java/org/tron/core/vm/config/ConfigLoader.java",
   "actuator/src/main/java/org/tron/core/utils/ProposalUtil.java",
@@ -208,6 +222,8 @@ risk = "critical"
 rotation = false
 daily_tvm = true
 paths = [
+  "actuator/src/main/java/org/tron/core/vm",
+  "common/src/main/java/org/tron/core/vm",
   "framework/src/main/java/org/tron/common/runtime/RuntimeImpl.java",
   "chainbase/src/main/java/org/tron/core/db/TransactionTrace.java",
   "actuator/src/main/java/org/tron/core/actuator/VMActuator.java",

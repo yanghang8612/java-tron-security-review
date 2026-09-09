@@ -32,12 +32,13 @@ source-based Codex Security path scans. Dynamic validation remains a separate co
 
 Every run selects one of eight TVM execution facets by day of year, even when there were no source
 changes. Facets cover entry/context, opcode dispatch, call/create, state rollback,
-precompiles/native work, resource limits, activation/replay and simulation parity. Each includes
-cross-module callers and sinks so the review follows a complete execution flow instead of scanning
-an isolated directory. Set `JTSR_SCOPE` only to force a specific facet for reproduction.
+precompiles/native work, resource limits, activation/replay and simulation parity. Every facet
+receives both complete VM packages plus its cross-module callers and sinks, so the selected
+execution flow can be checked against interactions anywhere in VM. Set `JTSR_SCOPE` only to force
+a specific facet for reproduction.
 
-The default OpenAI configuration uses `gpt-6-astra` at `xhigh` for the first investigation and
-separate `gpt-6-astra` at `high` invocations for per-candidate falsification. The pinned Codex
+The default OpenAI configuration uses `gpt-6-astra` at `max` for the first investigation and
+separate `gpt-6-astra` at `xhigh` invocations for per-candidate falsification. The pinned Codex
 Security CLI has no Astra cost model, so the configured dollar values are budget references rather
 than enforced thresholds. Triage is stopped after six hours; primary verification has at most
 eight candidates and a shared 60-minute window per candidate. Availability-only GPT-5.5 fallbacks

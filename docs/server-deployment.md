@@ -35,19 +35,20 @@ separate confirmation activities.
 
 Every run selects exactly one of eight configured TVM execution facets, even when the branch has
 not changed: entry/context, opcode dispatch, call/create, state rollback, precompiles/native work,
-resource limits, activation/replay, or simulation parity. Each facet includes the callers and
-sinks needed to follow control, data, Energy and state effects across module boundaries. The day
-of year selects the facet deterministically; use `jtsr plan --mode daily-tvm` to preview it or
-`--scope <facet-id>` to reproduce one explicitly.
+resource limits, activation/replay, or simulation parity. Every facet receives the complete
+`actuator/.../core/vm` and `common/.../core/vm` packages plus its callers and sinks, so the model
+can trace interactions across all VM code while concentrating its reasoning on one execution
+invariant. The day of year selects the facet deterministically; use `jtsr plan --mode daily-tvm`
+to preview it or `--scope <facet-id>` to reproduce one explicitly.
 
 The mandatory evidence gate rejects proposal-disabled, pre-hard-fork, historical-replay and
 test-only branches from findings and candidate-shaped deferred work unless a plausibly current
 production path is independently established.
 
-The server runs two independent discovery lanes: `gpt-6-astra` at `xhigh` and Grok Build through
+The server runs two independent discovery lanes: `gpt-6-astra` at `max` and Grok Build through
 the signed-in Grok subscription. Their candidate sets are unioned and deduplicated; agreement is
 recorded only as provenance and never treated as proof. Every selected candidate then gets its own
-`gpt-6-astra` at `high` skeptical-verifier invocation. Grok receives only the selected facet and
+`gpt-6-astra` at `xhigh` skeptical-verifier invocation. Grok receives only the selected facet and
 is constrained to read/grep tools, `dontAsk` fail-closed permissions, a read-only source mount,
 and a root-owned policy that disables bypass-permissions mode. The default Grok sandbox is
 `strict` on a Landlock-capable kernel.

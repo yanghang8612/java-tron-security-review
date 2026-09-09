@@ -104,8 +104,11 @@ whole scan.
 
 ## TVM execution-flow method
 
-For a daily TVM run, analyze only the orchestrator-selected facet, but follow its calls and effects
-across every supplied cross-module path. Build one end-to-end flow before searching for bugs:
+For a daily TVM run, use the orchestrator-selected facet as the primary investigation axis. The
+complete supplied TVM packages are authorized review context, not a request for a shallow directory
+checklist: inspect any VM caller, callee, shared registry, configuration, state or resource-accounting
+code needed to prove interactions, then follow the flow into every supplied cross-module path. Build
+one end-to-end flow before searching for bugs:
 
 - enumerate externally or contract-controlled entry points and execution variants;
 - trace control, attacker-controlled data, Energy/resource accounting and proposal snapshots;

@@ -15,6 +15,7 @@ scheduled path/repository review and cannot scan a diff.
 ## Cadence
 
 - Daily TVM at 02:17 Asia/Shanghai: one of eight execution-flow facets selected by day of year,
+  with the complete VM packages and facet-specific cross-module paths available on every run,
   even with no source changes.
 - Nightly incremental mode, when invoked manually: changes from the prior comparison window.
 - Weekly: one of seven critical/risk domains selected by ISO week.
@@ -45,8 +46,8 @@ Startup/preflight and reconnect heartbeats do not reset the progress watchdog. S
 [candidate verification](candidate-verification.md) for retry selection and diagnostic artifacts.
 Candidates beyond the configured count remain partial coverage and keep exit `2`.
 
-The default Codex Security triage uses Astra/xhigh with a six-hour hard process-group timeout, a ten-minute
-first-progress timeout and a thirty-minute no-progress timeout. Verification uses Astra/high and
+The default Codex Security triage uses Astra/max with a six-hour hard process-group timeout, a ten-minute
+first-progress timeout and a thirty-minute no-progress timeout. Verification uses Astra/xhigh and
 bounds at most eight candidates to one shared 60-minute window each, including a same-model retry.
 The pinned Codex Security CLI 0.1.25 does not provide an Astra
 cost model: adding `--max-cost` makes it exit before a model request. The configured 200 USD triage,

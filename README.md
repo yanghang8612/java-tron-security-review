@@ -9,14 +9,14 @@ SARIF, and keeps scan state outside the target worktree. It is advisory and read
 
 ## What is implemented
 
-- PR diff planning with Astra/xhigh discovery and isolated, Astra/high per-finding falsification for
+- PR diff planning with Astra/max discovery and isolated, Astra/xhigh per-finding falsification for
   High/Critical candidates.
 - An optional Grok Build subscription challenger for the server's daily TVM facet. Its hypotheses
   are merged with Astra candidates but never promoted by model agreement alone.
 - A GPT-5.5/high fallback only for explicitly recognized usage/rate limits or model availability
   failures. Safety refusals, local budget/time limits and unknown errors do not trigger fallback.
-- One-facet-per-day TVM execution-flow reviews, nightly incremental scans and a seven-domain weekly
-  deep-scan rotation.
+- One-facet-per-day TVM execution-flow reviews with the complete VM packages available to every
+  facet, nightly incremental scans and a seven-domain weekly deep-scan rotation.
 - A hard production-reachability admission gate that keeps pre-activation, fixed-before-activation,
   historical-replay and test-only proposal branches out of findings and candidate-shaped deferred work.
 - Release/manual full-repository scan modes.
