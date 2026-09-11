@@ -15,8 +15,9 @@ SARIF, and keeps scan state outside the target worktree. It is advisory and read
   are merged with Astra candidates but never promoted by model agreement alone.
 - A GPT-5.5/high fallback only for explicitly recognized usage/rate limits or model availability
   failures. Safety refusals, local budget/time limits and unknown errors do not trigger fallback.
-- One-facet-per-day TVM execution-flow reviews with the complete VM packages available to every
-  facet, nightly incremental scans and a seven-domain weekly deep-scan rotation.
+- A deterministic five-shard daily TVM campaign covering every production Java file under both
+  VM packages, with one rotating execution facet retained as the day's depth axis; nightly
+  incremental scans and a seven-domain weekly deep-scan rotation remain separate.
 - A hard production-reachability admission gate that keeps pre-activation, fixed-before-activation,
   historical-replay and test-only proposal branches out of findings and candidate-shaped deferred work.
 - Release/manual full-repository scan modes.
@@ -30,7 +31,8 @@ SARIF, and keeps scan state outside the target worktree. It is advisory and read
 - An optional AWS-managed CodeBuild/EventBridge deployment for operators who explicitly want it.
 - Dependency-free Python control plane with offline unit tests.
 - A private, read-only HTTP report portal with a two-pane report reader, readable evidence cards,
-  coverage/deferred evidence, and Markdown, JSON, SARIF and ZIP downloads through Nginx.
+  a file-level full-VM coverage ledger, deferred evidence, and Markdown, JSON, SARIF and ZIP
+  downloads through Nginx.
 
 Multi-model agreement is only corroboration. It never promotes a finding without code-path,
 trigger, impact, proof and reachability evidence.

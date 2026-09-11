@@ -55,11 +55,16 @@ def verification_inputs(config, target: Path, source_run: Path):
         if isinstance(job.get("profile"), dict)
     }
     enabled_profiles = tuple(sorted(optional_names & recorded_profiles))
+    # Pre-campaign reports used one broad triage job. Preserve their trusted
+    # recorded layout for re-verification; new reports reconstruct the exact
+    # deterministic shard plan from the pinned checkout.
+    campaign_target = target if any(job.get("campaign_shard") for job in jobs) else None
     plan = build_plan(
         config,
         original["run_mode"],
         scope_id=scope,
         enabled_profiles=enabled_profiles,
+        target=campaign_target,
     )
     sources = [job for job in plan.jobs if job.profile.per_finding]
     if not sources:

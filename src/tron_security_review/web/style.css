@@ -143,6 +143,14 @@ h3 { font-size: 17px; line-height: 1.4; }
 .coverage-entry { border: 1px solid var(--line); border-radius: 8px; padding: 13px 15px; margin: 9px 0; font-size: 12px; overflow-wrap: anywhere; }
 .coverage-entry summary { cursor: pointer; line-height: 1.6; }
 .coverage-body { margin-top: 17px; }
+.campaign-card { border: 1px solid #cbdbe4; border-radius: 10px; background: #f7fafb; padding: 18px; margin: 12px 0 18px; }
+.campaign-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.campaign-heading h4 { margin: 0; color: #20384e; font-size: 17px; }
+.campaign-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 9px; margin: 14px 0; }
+.campaign-metrics .stat { min-height: 98px; box-shadow: none; }
+.campaign-shard { border-top: 1px solid #dce6ec; padding: 11px 2px; font-size: 12px; }
+.campaign-shard summary { cursor: pointer; color: #2d5268; line-height: 1.6; }
+.missing-files { margin: 8px 0 0; padding-left: 20px; font: 11px/1.7 ui-monospace, SFMono-Regular, Menlo, monospace; overflow-wrap: anywhere; }
 .empty { padding: 20px; color: var(--muted); font-size: 12px; line-height: 1.7; }
 .detail-section > .empty { background: #f7f9fb; border-radius: 8px; padding: 14px; }
 .artifact { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid #edf0f4; padding: 10px 0; font-size: 11px; }
@@ -183,6 +191,7 @@ footer span { letter-spacing: 0; }
   h1 { font-size: 27px; }
   .page-heading .muted { font-size: 12px; }
   .stats { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .campaign-metrics { grid-template-columns: 1fr; }
   .stat { min-height: 105px; padding: 14px; }
   .stat strong { font-size: 21px; }
   .run-list { max-height: 340px; }

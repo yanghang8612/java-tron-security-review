@@ -26,6 +26,7 @@ from .verification import (
     read_json,
     review_outcome,
 )
+from .vm_campaign import SHARD_LABELS, build_coverage_manifest
 from .supervision import execution_path, run_command as _run_command
 
 
@@ -173,6 +174,22 @@ def _render_job_prompt(
         if job.scope and job.scope.focus
         else "- follow the profile prompt and matched risk routes"
     )
+    campaign_context = ""
+    if job.campaign_shard:
+        campaign_context = (
+            "\n\nDeterministic full-VM campaign:\n"
+            + f"- Shard: `{job.campaign_shard}` — "
+            + SHARD_LABELS.get(job.campaign_shard, job.campaign_shard)
+            + "\n"
+            + f"- Assigned VM source files: {len(job.coverage_paths)}\n"
+            + "- Review every assigned VM source file and name each reviewed file in "
+            + "coverage surfaces or architecture evidence together with a checked symbol, "
+            + "role or invariant; do not emit a bare inventory list. The orchestrator independently "
+            + "checks those citations; merely receiving a --path is not review evidence.\n"
+            + "- This shard is one part of the same daily campaign. Follow callers and "
+            + "callees across module boundaries as needed, while keeping the selected "
+            + "daily facet as the depth axis.\n"
+        )
     rendered = (
         base.rstrip()
         + "\n\n## Orchestrator-provided run context\n\n"
@@ -186,6 +203,7 @@ def _render_job_prompt(
         + route_context
         + "\n\nChanged files:\n"
         + changed
+        + campaign_context
         + "\n"
     )
     destination.write_text(rendered, encoding="utf-8")
@@ -1388,7 +1406,16 @@ def run_plan(
                     dry_run=dry_run,
                     provider_override=provider_override,
                     model_override=model_override,
-                    timeout_seconds=(job.profile.max_time_hours or 0) * 3600
+                    timeout_seconds=(
+                        (
+                            job.profile.vm_shard_max_time_hours
+                            if job.campaign_shard
+                            and job.profile.vm_shard_max_time_hours is not None
+                            else job.profile.max_time_hours
+                        )
+                        or 0
+                    )
+                    * 3600
                     or None,
                 )
             )
@@ -1400,6 +1427,15 @@ def run_plan(
     )
     aggregate = aggregate_run(run_dir, excluded_scan_dirs=excluded_scan_dirs)
     write_json(run_dir / "aggregate.json", aggregate)
+    campaign_coverage = (
+        None
+        if source_run_dir
+        else build_coverage_manifest(plan, results, target, dry_run)
+    )
+    if campaign_coverage is not None:
+        write_json(run_dir / "coverage-manifest.json", campaign_coverage)
+        if not dry_run and campaign_coverage["completeness"] != "complete":
+            partial_coverage = True
     partial_coverage = partial_coverage or _has_partial_results(results)
     final_manifest = dict(initial_manifest)
     final_manifest["completed_at"] = datetime.now(timezone.utc).isoformat()

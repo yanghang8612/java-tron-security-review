@@ -104,6 +104,27 @@ async function loadDetail(id) {
     const applyFilter = () => {const query = search.value.trim().toLowerCase(); let visible = 0; for (const [card, text] of searchable) {card.hidden = !text.includes(query); if (!card.hidden) visible++;} count.textContent = "显示 " + visible + " / " + searchable.length + " 条"; noMatch.hidden = !query || visible > 0;};
     search.addEventListener("input", applyFilter); applyFilter();
     const coverage = section(panel, "覆盖记录 · " + data.coverage.length, "report-coverage");
+    if (data.vm_campaign) {
+      const campaign = data.vm_campaign, card = el("div", null, "campaign-card");
+      const heading = el("div", null, "campaign-heading");
+      heading.append(el("h4", "全 VM 文件证据覆盖"), el("span", campaign.completeness === "complete" ? "覆盖完整" : campaign.completeness === "partial" ? "覆盖不完整" : "尚未执行", "badge " + (campaign.completeness === "complete" ? "completed" : campaign.completeness === "partial" ? "partial" : "dry_run")));
+      const metrics = el("div", null, "campaign-metrics");
+      metrics.append(stat("清单文件", campaign.expected_count ?? "?", "两处生产 VM 源码目录"), stat("有审查证据", campaign.evidenced_count ?? "?", "报告中有文件级引用"), stat("未触达", campaign.missing_count ?? "?", "存在即不能宣称完整"));
+      card.append(heading, el("p", campaign.summary || "没有覆盖摘要。", "muted"), metrics);
+      for (const shard of campaign.shards || []) {
+        const row = el("details", null, "campaign-shard"), label = shard.label || shard.shard;
+        row.append(el("summary", label + " · " + (shard.evidenced_count ?? 0) + "/" + (shard.assigned_count ?? 0) + " 个文件有证据"));
+        const body = el("div", null, "coverage-body");
+        if ((shard.missing_files || []).length) {
+          body.append(el("p", "未触达文件", "finding-kind"));
+          const list = el("ul", null, "missing-files");
+          for (const path of shard.missing_files) list.append(el("li", path));
+          body.append(list);
+        } else body.append(el("p", "该分片没有文件级覆盖缺口。", "muted"));
+        row.append(body); card.append(row);
+      }
+      coverage.append(card);
+    }
     for (const item of data.coverage) {const node = el("details", null, "coverage-entry"), body = el("div", null, "coverage-body"); const complete = {complete: "覆盖完整", partial: "覆盖不完整"}[item.document.completeness] || "覆盖状态待核验"; node.append(el("summary", complete + " · " + item.path)); ReportView.structured(body, item.document); node.append(body); coverage.append(node);}
     const files = section(panel, "报告文件", "report-files"), viewer = el("div", null, "viewer"); viewer.hidden = true;
     for (const item of data.artifacts) {

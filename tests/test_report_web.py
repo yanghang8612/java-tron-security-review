@@ -103,11 +103,31 @@ class ReportStoreTests(unittest.TestCase):
         self.assertTrue(allowed_artifact("verifier-tvm/candidates/001-test/gpt-5.5/results.sarif"))
         self.assertTrue(allowed_artifact("primary/results/report.md"))
         self.assertTrue(allowed_artifact("deep-vm-execution/results/coverage.json"))
+        self.assertTrue(allowed_artifact("coverage-manifest.json"))
         self.assertFalse(allowed_artifact("triage-tvm-calls/invocation.stderr.log"))
         self.assertFalse(allowed_artifact("../auth.json"))
         with zipfile.ZipFile(io.BytesIO(self.store.archive(RUN))) as archive:
             self.assertIn(RUN + "/" + REPORT, archive.namelist())
             self.assertFalse(any("auth" in n or ".log" in n for n in archive.namelist()))
+
+    def test_full_vm_campaign_coverage_is_exposed(self):
+        self.manifest["partial_coverage"] = False
+        self.manifest["results"][0]["returncode"] = 0
+        self.manifest["plan"]["jobs"][0]["campaign_shard"] = "core-dispatch"
+        self.write("run-manifest.json", self.manifest)
+        self.write(COVERAGE, {"completeness": "complete"})
+        campaign = {
+            "completeness": "partial",
+            "expected_count": 66,
+            "evidenced_count": 64,
+            "missing_count": 2,
+            "shards": [],
+        }
+        self.write("coverage-manifest.json", campaign)
+        detail = self.store.detail(RUN)
+        self.assertEqual(detail["status"], "partial")
+        self.assertEqual(detail["vm_campaign"], campaign)
+        self.assertEqual(detail["vm_coverage"]["missing"], 2)
 
     def test_symlink_traversal_and_fifo_blocked(self):
         secret = self.root / "secret"

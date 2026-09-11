@@ -62,6 +62,7 @@ def _plan_inputs(config, args):
         scope_id=args.scope,
         iso_week=args.iso_week,
         enabled_profiles=tuple(args.enable_profile or ()),
+        target=target,
     )
     return target, base_commit, head_commit, plan
 

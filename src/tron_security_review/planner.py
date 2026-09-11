@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 
 from .config import AppConfig, Profile, RISK_ORDER, Scope
+from .vm_campaign import cross_module_context, shard_vm_sources
 
 
 VALID_RUN_MODES = {
@@ -31,6 +32,8 @@ class PlanJob:
     profile: Profile
     scope: Scope | None
     paths: tuple[str, ...]
+    campaign_shard: str | None = None
+    coverage_paths: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -139,6 +142,7 @@ def build_plan(
     iso_week: int | None = None,
     day_of_year: int | None = None,
     enabled_profiles: tuple[str, ...] = (),
+    target: Path | None = None,
 ) -> ScanPlan:
     if run_mode not in VALID_RUN_MODES:
         allowed = ", ".join(sorted(VALID_RUN_MODES))
@@ -178,14 +182,33 @@ def build_plan(
     if run_mode == "daily-tvm":
         assert selected_scope is not None
         for profile in profiles:
-            jobs.append(
-                PlanJob(
-                    id=f"{profile.name}-{selected_scope.id}",
-                    profile=profile,
-                    scope=selected_scope,
-                    paths=selected_scope.paths,
+            if profile.full_vm_campaign and target is not None:
+                shards = shard_vm_sources(target)
+                if not shards:
+                    raise ValueError(
+                        "daily TVM campaign found no Java sources under the configured VM roots"
+                    )
+                context = cross_module_context(selected_scope.paths, target)
+                for shard, sources in shards.items():
+                    jobs.append(
+                        PlanJob(
+                            id=f"{profile.name}-{selected_scope.id}-{shard}",
+                            profile=profile,
+                            scope=selected_scope,
+                            paths=(*sources, *context),
+                            campaign_shard=shard,
+                            coverage_paths=sources,
+                        )
+                    )
+            else:
+                jobs.append(
+                    PlanJob(
+                        id=f"{profile.name}-{selected_scope.id}",
+                        profile=profile,
+                        scope=selected_scope,
+                        paths=selected_scope.paths,
+                    )
                 )
-            )
     elif run_mode == "weekly":
         week = iso_week or date.today().isocalendar().week
         selected_scope = _rotation_scope(config, scope_id, week)

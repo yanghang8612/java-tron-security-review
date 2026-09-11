@@ -11,6 +11,8 @@ max_time_hours = 6.0
 first_response_timeout_minutes = 10.0
 idle_timeout_minutes = 30.0
 prompt = "prompts/scan.md"
+full_vm_campaign = true
+vm_shard_max_time_hours = 2.0
 
 [profiles.triage-grok]
 description = "Independent Grok Build challenger for the daily TVM execution facet"

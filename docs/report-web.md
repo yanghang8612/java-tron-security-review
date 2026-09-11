@@ -58,6 +58,7 @@ sudo cat /etc/java-tron-security-review/report-web-login.txt
 
 - `report.md`：在线阅读或者下载 Markdown。
 - `findings.json` / `coverage.json`：发现详情、覆盖缺口和待验证项。
+- 根目录 `coverage-manifest.json`：全 VM 文件清单、五个分片的证据计数和未触达文件。
 - `results.sarif`：用于支持 SARIF 的本地审查工具。
 - “下载完整报告 ZIP”：仅打包白名单报告和运行元数据，不包含扫描日志、上下文、状态数据库、密钥。
 

@@ -26,7 +26,12 @@ NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,159}\Z")
 FILE_LIMIT = 8 * 1024 * 1024
 ARCHIVE_LIMIT = 64 * 1024 * 1024
 RESULT_FILES = {"report.md", "findings.json", "coverage.json", "scan-manifest.json", "results.sarif"}
-ROOT_FILES = {"run-manifest.json", "aggregate.json", "target-revision.txt"}
+ROOT_FILES = {
+    "run-manifest.json",
+    "aggregate.json",
+    "coverage-manifest.json",
+    "target-revision.txt",
+}
 ASSETS = Path(__file__).with_name("web")
 
 
@@ -155,6 +160,7 @@ class ReportStore:
     def summary(self, run_id: str):
         manifest = self.document(run_id, "run-manifest.json")
         aggregate = self.document(run_id, "aggregate.json")
+        vm_campaign = self.document(run_id, "coverage-manifest.json")
         warnings = []
         if not isinstance(manifest, dict):
             warnings.append("运行清单缺失或无法解析")
@@ -203,6 +209,21 @@ class ReportStore:
                 has_cost = True
         plan = _dict(manifest.get("plan"))
         jobs = [_dict(j) for j in _list(plan.get("jobs"))]
+        has_vm_campaign = (
+            manifest.get("execution_kind") != "verification_only"
+            and any(job.get("campaign_shard") for job in jobs)
+        )
+        if has_vm_campaign:
+            if not isinstance(vm_campaign, dict):
+                warnings.append("全 VM 覆盖清单缺失或无法解析")
+                if status == "completed":
+                    status = "unknown"
+            elif vm_campaign.get("completeness") == "partial":
+                status = "partial"
+            elif vm_campaign.get("completeness") not in {"complete", "not_evaluated"}:
+                warnings.append("全 VM 覆盖状态无法核验")
+                if status == "completed":
+                    status = "unknown"
         models = {str(r["model"]) for r in results if r.get("model")}
         models.update(str(_dict(j.get("profile"))["model"]) for j in jobs if _dict(j.get("profile")).get("model"))
         count = aggregate.get("finding_group_count")
@@ -215,11 +236,17 @@ class ReportStore:
                 "estimated_cost": round(cost, 6) if has_cost else None,
                 "models": sorted(models), "mode": plan.get("run_mode") or plan.get("mode"),
                 "scopes": sorted({str(_dict(j.get("scope")).get("id", j.get("scope_id", ""))) for j in jobs} - {""}),
+                "vm_coverage": {
+                    "expected": vm_campaign.get("expected_count"),
+                    "evidenced": vm_campaign.get("evidenced_count"),
+                    "missing": vm_campaign.get("missing_count"),
+                } if isinstance(vm_campaign, dict) else None,
                 "warnings": warnings}
 
     def detail(self, run_id: str):
         artifacts = self.artifacts(run_id)  # Also establishes that this is a real directory.
         summary = self.summary(run_id)
+        vm_campaign = self.document(run_id, "coverage-manifest.json")
         coverages = []
         deferred = []
         verification = []
@@ -311,7 +338,8 @@ class ReportStore:
         return {**summary, "revision": revision, "artifacts": artifacts,
                 "finding_groups": groups,
                 "coverage": coverages, "deferred": deferred,
-                "verification": verification, "followups": followups}
+                "verification": verification, "followups": followups,
+                "vm_campaign": vm_campaign if isinstance(vm_campaign, dict) else None}
 
     def archive(self, run_id: str) -> bytes:
         output = io.BytesIO()

@@ -46,8 +46,9 @@ Startup/preflight and reconnect heartbeats do not reset the progress watchdog. S
 [candidate verification](candidate-verification.md) for retry selection and diagnostic artifacts.
 Candidates beyond the configured count remain partial coverage and keep exit `2`.
 
-The default Codex Security triage uses Astra/max with a six-hour hard process-group timeout, a ten-minute
-first-progress timeout and a thirty-minute no-progress timeout. Verification uses Astra/xhigh and
+The default daily Codex Security triage uses Astra/max across five deterministic VM shards, each
+with a two-hour hard process-group timeout, a ten-minute first-progress timeout and a thirty-minute
+no-progress timeout. Non-campaign uses retain the profile's six-hour limit. Verification uses Astra/xhigh and
 bounds at most eight candidates to one shared 60-minute window each, including a same-model retry.
 The pinned Codex Security CLI 0.1.25 does not provide an Astra
 cost model: adding `--max-cost` makes it exit before a model request. The configured 200 USD triage,
@@ -71,8 +72,10 @@ CLI and SDK 0.153.4. Container builds verify all three exact versions, and both 
 from that same lockfile. Remove the override once a stable Codex Security release directly requires
 an Astra-compatible runtime.
 
-Advisory workflows use `continue-on-error` so partial results can still be exported. Review
-`coverage.json`; a partial or unknown coverage value is never a clean bill of health.
+Advisory workflows use `continue-on-error` so partial results can still be exported. Review each
+`coverage.json` together with root `coverage-manifest.json`; a partial or unknown coverage value is
+never a clean bill of health. The root ledger counts semantic source references, not the CLI's
+input path list.
 
 Scheduled Standard scans explicitly require the model to submit a final semantic draft with
 `complete: true`, including for zero-finding results. This marker means the bounded model turn has

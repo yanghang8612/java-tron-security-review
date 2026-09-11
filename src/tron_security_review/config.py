@@ -55,6 +55,8 @@ class Profile:
     first_response_timeout_minutes: float | None = None
     idle_timeout_minutes: float | None = None
     max_retries: int = 0
+    full_vm_campaign: bool = False
+    vm_shard_max_time_hours: float | None = None
 
 
 @dataclass(frozen=True)
@@ -199,8 +201,14 @@ def load_config(root: Path | None = None) -> AppConfig:
             first_response_timeout_minutes=values.get("first_response_timeout_minutes"),
             idle_timeout_minutes=values.get("idle_timeout_minutes"),
             max_retries=values.get("max_retries", 0),
+            full_vm_campaign=bool(values.get("full_vm_campaign", False)),
+            vm_shard_max_time_hours=(
+                float(values["vm_shard_max_time_hours"])
+                if "vm_shard_max_time_hours" in values
+                else None
+            ),
         )
-        for field in ("max_cost", "max_time_hours", "per_finding_max_cost", "per_finding_timeout_minutes",
+        for field in ("max_cost", "max_time_hours", "vm_shard_max_time_hours", "per_finding_max_cost", "per_finding_timeout_minutes",
                       "fallback_timeout_minutes", "first_response_timeout_minutes", "idle_timeout_minutes"):
             value = getattr(profile, field)
             if value is not None and (isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0):
@@ -211,6 +219,19 @@ def load_config(root: Path | None = None) -> AppConfig:
             raise ValueError(
                 f"profiles.{name}: Grok Build profiles are discovery-only; "
                 "use a Codex Security verifier"
+            )
+        if profile.full_vm_campaign and (
+            profile.engine != "codex-security"
+            or profile.scan_mode != "standard"
+            or profile.per_finding
+        ):
+            raise ValueError(
+                f"profiles.{name}.full_vm_campaign requires a standard "
+                "Codex Security discovery profile"
+            )
+        if profile.vm_shard_max_time_hours is not None and not profile.full_vm_campaign:
+            raise ValueError(
+                f"profiles.{name}.vm_shard_max_time_hours requires full_vm_campaign"
             )
         if profile.per_finding:
             if not profile.candidate_source_profiles:

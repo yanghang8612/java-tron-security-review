@@ -33,13 +33,20 @@ separate confirmation activities.
 
 ## Daily TVM scope
 
-Every run selects exactly one of eight configured TVM execution facets, even when the branch has
-not changed: entry/context, opcode dispatch, call/create, state rollback, precompiles/native work,
-resource limits, activation/replay, or simulation parity. Every facet receives the complete
-`actuator/.../core/vm` and `common/.../core/vm` packages plus its callers and sinks, so the model
-can trace interactions across all VM code while concentrating its reasoning on one execution
-invariant. The day of year selects the facet deterministically; use `jtsr plan --mode daily-tvm`
-to preview it or `--scope <facet-id>` to reproduce one explicitly.
+Every run selects exactly one of eight configured TVM execution facets as its depth axis, even
+when the branch has not changed: entry/context, opcode dispatch, call/create, state rollback,
+precompiles/native work, resource limits, activation/replay, or simulation parity. Astra first
+inventories every production Java file below `actuator/.../core/vm` and
+`common/.../core/vm`, then partitions that inventory into five sequential Standard scans: core
+dispatch/configuration, Program runtime, Repository state, native contracts, and trace/utilities.
+Each source is assigned exactly once while the selected facet's cross-module callers and sinks are
+available to every shard. The day of year selects the facet deterministically; use
+`jtsr plan --mode daily-tvm` to preview it or `--scope <facet-id>` to reproduce one explicitly.
+
+After the scans, `coverage-manifest.json` compares the inventory with semantic file references in
+sealed coverage, architecture, finding and report artifacts. Merely passing a file through
+`--path` is not counted as evidence. Missing, duplicate, failed or unassigned work forces partial
+coverage and is shown by shard in the report portal.
 
 The mandatory evidence gate rejects proposal-disabled, pre-hard-fork, historical-replay and
 test-only branches from findings and candidate-shaped deferred work unless a plausibly current
@@ -54,8 +61,9 @@ and a root-owned policy that disables bypass-permissions mode. The default Grok 
 `strict` on a Landlock-capable kernel.
 Only explicitly recognized usage/rate limits or model-availability errors are retried with
 `gpt-5.5` at `high`. Safety refusals and local budget/time limits never trigger model fallback.
-At most eight candidates are selected in severity order. Discovery has a six-hour process-group
-limit; each Astra primary candidate has a shared 60-minute window including its same-model retry.
+At most eight candidates are selected in severity order. Each of the five Astra discovery shards
+has a two-hour process-group limit; each Astra primary candidate has a shared 60-minute window
+including its same-model retry.
 The currently pinned Codex Security CLI, including its latest checked release 0.1.25, has no Astra
 cost model and rejects `--max-cost` before the first model request. The configured 200/30/240 USD
 values are therefore retained only as operator budget references and are explicitly recorded as
