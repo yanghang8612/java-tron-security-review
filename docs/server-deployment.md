@@ -37,8 +37,9 @@ Every run selects exactly one of eight configured TVM execution facets as its de
 when the branch has not changed: entry/context, opcode dispatch, call/create, state rollback,
 precompiles/native work, resource limits, activation/replay, or simulation parity. Astra first
 inventories every production Java file below `actuator/.../core/vm` and
-`common/.../core/vm`, then partitions that inventory into five sequential Standard scans: core
-dispatch/configuration, Program runtime, Repository state, native contracts, and trace/utilities.
+`common/.../core/vm`, then partitions that inventory into seven sequential Standard scans: core
+dispatch/configuration, Program execution, Program state, Program invocation/listeners, Repository
+state, native contracts, and trace/utilities.
 Each source is assigned exactly once while the selected facet's cross-module callers and sinks are
 available to every shard. The day of year selects the facet deterministically; use
 `jtsr plan --mode daily-tvm` to preview it or `--scope <facet-id>` to reproduce one explicitly.
