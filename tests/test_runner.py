@@ -1,4 +1,5 @@
 import json
+from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
 import tempfile
@@ -9,6 +10,7 @@ import unittest.mock
 from tron_security_review.config import available_knowledge_bases, load_config
 from tron_security_review.planner import build_plan
 from tron_security_review.runner import (
+    InvocationResult,
     _candidate_paths,
     _cyber_safety_blocked,
     _estimated_cost,
@@ -140,6 +142,76 @@ class RunnerTests(unittest.TestCase):
         self.assertFalse(_has_partial_results((superseded, successful_fallback)))
         self.assertTrue(_has_partial_results((superseded, failed_fallback)))
 
+    def test_campaign_first_response_retry_is_time_bounded_and_does_not_leak_stale_findings(self):
+        plan = build_plan(self.config, "daily-tvm", day_of_year=1, target=self.target)
+        shard = next(job for job in plan.jobs if job.campaign_shard)
+        plan = replace(plan, jobs=(shard,))
+        with tempfile.TemporaryDirectory() as directory:
+            calls = []
+
+            def invoke(**kwargs):
+                calls.append(kwargs)
+                scan_dir = kwargs["attempt_dir"] / "results"
+                scan_dir.mkdir()
+                file_path = shard.coverage_paths[0]
+                (scan_dir / "findings.json").write_text(json.dumps({
+                    "findings": [{"id": "stale"}] if len(calls) == 1 else [],
+                }))
+                (scan_dir / "coverage.json").write_text(json.dumps({
+                    "surfaces": [{"notes": file_path}],
+                }))
+                stdout = kwargs["attempt_dir"] / "invocation.stdout.json"
+                stdout.write_text("{}")
+                stderr = kwargs["attempt_dir"] / "invocation.stderr.log"
+                stderr.write_text("orchestrator timeout: first_response_timeout" if len(calls) == 1 else "")
+                return InvocationResult(
+                    job_id=shard.id, command=("scan",), scan_dir=str(scan_dir),
+                    returncode=2 if len(calls) == 1 else 0, export_returncode=None,
+                    stdout_path=str(stdout), stderr_path=str(stderr), sarif_path=None,
+                    model="gpt-6-astra", effort="xhigh",
+                    termination_reason="first_response_timeout" if len(calls) == 1 else None,
+                    duration_seconds=1200 if len(calls) == 1 else 100,
+                )
+
+            with unittest.mock.patch("tron_security_review.runner._invoke_scan", side_effect=invoke):
+                run_dir, results = run_plan(
+                    self.config, plan, self.target, Path(directory), "retry-test", "chatgpt",
+                )
+            self.assertEqual(len(calls), 2)
+            self.assertEqual(calls[0]["timeout_seconds"], 7200)
+            self.assertGreater(calls[1]["timeout_seconds"], 5999)
+            self.assertLessEqual(calls[1]["timeout_seconds"], 6000)
+            self.assertFalse(results[0].counts_toward_exit)
+            self.assertEqual(results[0].job_id, shard.id + "/primary")
+            self.assertTrue(Path(results[0].scan_dir, "findings.json").exists())
+            self.assertTrue(results[1].counts_toward_exit)
+            self.assertEqual(json.loads((run_dir / "aggregate.json").read_text())["finding_group_count"], 0)
+
+    def test_campaign_usage_limit_is_not_retried(self):
+        plan = build_plan(self.config, "daily-tvm", day_of_year=1, target=self.target)
+        shard = next(job for job in plan.jobs if job.campaign_shard)
+        plan = replace(plan, jobs=(shard,))
+        with tempfile.TemporaryDirectory() as directory:
+            def invoke(**kwargs):
+                scan_dir = kwargs["attempt_dir"] / "results"
+                scan_dir.mkdir()
+                stdout = kwargs["attempt_dir"] / "invocation.stdout.json"
+                stdout.write_text("{}")
+                stderr = kwargs["attempt_dir"] / "invocation.stderr.log"
+                stderr.write_text("usage_limit_reached")
+                return InvocationResult(
+                    job_id=shard.id, command=("scan",), scan_dir=str(scan_dir),
+                    returncode=2, export_returncode=None, stdout_path=str(stdout),
+                    stderr_path=str(stderr), sarif_path=None, model="gpt-6-astra",
+                    effort="xhigh", termination_reason="first_response_timeout",
+                    duration_seconds=1200,
+                )
+            with unittest.mock.patch("tron_security_review.runner._invoke_scan", side_effect=invoke) as scan:
+                _, results = run_plan(self.config, plan, self.target, Path(directory), "no-retry", "chatgpt")
+            self.assertEqual(scan.call_count, 1)
+            self.assertEqual(len(results), 1)
+            self.assertTrue(results[0].counts_toward_exit)
+
     def test_candidate_paths_are_scoped_and_cannot_escape_target(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             target = Path(directory)
@@ -260,7 +332,7 @@ class RunnerTests(unittest.TestCase):
                 model = command[command.index("--model") + 1]
                 if scan_dir.parent.name == "triage-tvm-opcode-dispatch":
                     self.assertEqual(model, "gpt-6-astra")
-                    self.assertEqual(command[command.index("--effort") + 1], "max")
+                    self.assertEqual(command[command.index("--effort") + 1], "xhigh")
                     self.assertNotIn("--max-cost", command)
                     self.assertEqual(timeout_seconds, 21600)
                     (scan_dir / "findings.json").write_text(

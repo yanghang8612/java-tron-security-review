@@ -46,9 +46,14 @@ Startup/preflight and reconnect heartbeats do not reset the progress watchdog. S
 [candidate verification](candidate-verification.md) for retry selection and diagnostic artifacts.
 Candidates beyond the configured count remain partial coverage and keep exit `2`.
 
-The default daily Codex Security triage uses Astra/max across five deterministic VM shards, each
-with a two-hour hard process-group timeout, a ten-minute first-progress timeout and a thirty-minute
-no-progress timeout. Non-campaign uses retain the profile's six-hour limit. Verification uses Astra/xhigh and
+The default daily Codex Security triage uses Astra/xhigh across seven deterministic VM shards, splitting
+program execution, program state, and invocation into separate source inventories. Each shard has
+a two-hour hard process-group timeout, a twenty-minute first-progress timeout and a thirty-minute
+no-progress timeout. A first-response timeout alone allows one same-model retry within the original
+two-hour shard deadline; a completed partial scan, usage/quota failure, safety refusal, or unknown
+failure does not retry. The failed attempt remains in `attempts/primary` for diagnostics, excluded
+from findings aggregation and coverage; only the effective retry is consumed by the verifier.
+Non-campaign uses retain the profile's six-hour limit. Verification uses Astra/xhigh and
 bounds at most eight candidates to one shared 60-minute window each, including a same-model retry.
 The pinned Codex Security CLI 0.1.25 does not provide an Astra
 cost model: adding `--max-cost` makes it exit before a model request. The configured 200 USD triage,
@@ -56,7 +61,9 @@ cost model: adding `--max-cost` makes it exit before a model request. The config
 manifests mark them as unenforced and the wrapper omits the incompatible flag. Do not treat them as
 hard billing caps. GPT-5.5 fallback also omits `--max-cost`; it is limited to three candidates and
 thirty minutes per candidate at `high` effort. None of these values are ChatGPT subscription
-charges or quota balances.
+charges or quota balances. The daily triage reduction from `max` to `xhigh` can lower reasoning-token
+consumption, but its actual effect depends on the workload and must be compared across completed runs;
+there is no reliable per-shard billed-token counter in the current CLI artifact stream.
 
 The manually deployed server explicitly enables an otherwise optional Grok Build discovery lane.
 It gets three hours for the same one-facet scope and emits a bounded structured candidate list.

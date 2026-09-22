@@ -143,6 +143,7 @@ def build_plan(
     day_of_year: int | None = None,
     enabled_profiles: tuple[str, ...] = (),
     target: Path | None = None,
+    legacy_program_shard: bool = False,
 ) -> ScanPlan:
     if run_mode not in VALID_RUN_MODES:
         allowed = ", ".join(sorted(VALID_RUN_MODES))
@@ -183,7 +184,7 @@ def build_plan(
         assert selected_scope is not None
         for profile in profiles:
             if profile.full_vm_campaign and target is not None:
-                shards = shard_vm_sources(target)
+                shards = shard_vm_sources(target, legacy_program_shard=legacy_program_shard)
                 if not shards:
                     raise ValueError(
                         "daily TVM campaign found no Java sources under the configured VM roots"

@@ -2,14 +2,15 @@
 description = "High-reasoning discovery across each scoped execution flow"
 provider = "openai"
 model = "gpt-6-astra"
-effort = "max"
+effort = "xhigh"
 scan_mode = "standard"
 modes = ["pr", "daily-tvm"]
 minimum_risk = "low"
 max_cost = 200.0
 max_time_hours = 6.0
-first_response_timeout_minutes = 10.0
+first_response_timeout_minutes = 20.0
 idle_timeout_minutes = 30.0
+max_retries = 1
 prompt = "prompts/scan.md"
 full_vm_campaign = true
 vm_shard_max_time_hours = 2.0

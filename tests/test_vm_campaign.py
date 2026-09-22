@@ -24,6 +24,8 @@ class VmCampaignTests(unittest.TestCase):
         self.files = (
             "actuator/src/main/java/org/tron/core/vm/VM.java",
             "actuator/src/main/java/org/tron/core/vm/program/Program.java",
+            "actuator/src/main/java/org/tron/core/vm/program/Memory.java",
+            "actuator/src/main/java/org/tron/core/vm/program/invoke/ProgramInvoke.java",
             "actuator/src/main/java/org/tron/core/vm/repository/Repository.java",
             "actuator/src/main/java/org/tron/core/vm/nativecontract/Processor.java",
             "actuator/src/main/java/org/tron/core/vm/trace/ProgramTrace.java",
@@ -115,6 +117,17 @@ class VmCampaignTests(unittest.TestCase):
             set(partial["missing_files"]),
             set(first.coverage_paths),
         )
+
+    def test_legacy_campaign_layout_can_be_reconstructed_for_reverification(self):
+        current = build_plan(self.config, "daily-tvm", day_of_year=1, target=self.target)
+        legacy = build_plan(
+            self.config, "daily-tvm", day_of_year=1, target=self.target,
+            legacy_program_shard=True,
+        )
+        current_paths = [p for j in current.jobs if j.campaign_shard for p in j.coverage_paths]
+        legacy_paths = [p for j in legacy.jobs if j.campaign_shard for p in j.coverage_paths]
+        self.assertEqual(sorted(current_paths), sorted(legacy_paths))
+        self.assertIn("program-runtime", [j.campaign_shard for j in legacy.jobs])
 
     def test_ambiguous_basenames_require_repository_relative_paths(self):
         scan_dir = self.target.parent / "ambiguous"

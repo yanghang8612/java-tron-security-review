@@ -65,6 +65,7 @@ def verification_inputs(config, target: Path, source_run: Path):
         scope_id=scope,
         enabled_profiles=enabled_profiles,
         target=campaign_target,
+        legacy_program_shard=any(job.get("campaign_shard") == "program-runtime" for job in jobs),
     )
     sources = [job for job in plan.jobs if job.profile.per_finding]
     if not sources:

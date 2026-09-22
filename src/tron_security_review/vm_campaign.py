@@ -15,7 +15,9 @@ VM_SOURCE_ROOTS = (
 )
 SHARD_ORDER = (
     "core-dispatch",
-    "program-runtime",
+    "program-execution",
+    "program-state",
+    "program-invocation",
     "repository-state",
     "native-contracts",
     "trace-utils",
@@ -23,6 +25,9 @@ SHARD_ORDER = (
 SHARD_LABELS = {
     "core-dispatch": "VM core dispatch, precompiles and configuration",
     "program-runtime": "Program execution, memory, stack, storage and invocation",
+    "program-execution": "Program execution and precompile orchestration",
+    "program-state": "Program memory, stack, storage and contract state",
+    "program-invocation": "Program invocation, call frames and listeners",
     "repository-state": "Repository isolation, caching, commit and rollback",
     "native-contracts": "Native-contract processors and their parameter boundaries",
     "trace-utils": "Execution tracing, listeners and VM utility accounting",
@@ -50,7 +55,11 @@ def shard_for_path(path: str) -> str:
     if "/vm/nativecontract/" in normalized:
         return "native-contracts"
     if "/vm/program/" in normalized:
-        return "program-runtime"
+        if "/vm/program/invoke/" in normalized or "/vm/program/listener/" in normalized:
+            return "program-invocation"
+        if normalized.endswith(("/Program.java", "/ProgramPrecompile.java")):
+            return "program-execution"
+        return "program-state"
     if "/vm/repository/" in normalized:
         return "repository-state"
     if "/vm/trace/" in normalized or "/vm/utils/" in normalized:
@@ -58,11 +67,16 @@ def shard_for_path(path: str) -> str:
     return "core-dispatch"
 
 
-def shard_vm_sources(target: Path) -> dict[str, tuple[str, ...]]:
-    grouped: dict[str, list[str]] = {name: [] for name in SHARD_ORDER}
+def shard_vm_sources(target: Path, legacy_program_shard: bool = False) -> dict[str, tuple[str, ...]]:
+    order = (
+        ("core-dispatch", "program-runtime", "repository-state", "native-contracts", "trace-utils")
+        if legacy_program_shard else SHARD_ORDER
+    )
+    grouped: dict[str, list[str]] = {name: [] for name in order}
     for path in inventory_vm_sources(target):
-        grouped[shard_for_path(path)].append(path)
-    return {name: tuple(grouped[name]) for name in SHARD_ORDER if grouped[name]}
+        shard = shard_for_path(path)
+        grouped["program-runtime" if legacy_program_shard and shard.startswith("program-") else shard].append(path)
+    return {name: tuple(grouped[name]) for name in order if grouped[name]}
 
 
 def cross_module_context(paths: Iterable[str], target: Path) -> tuple[str, ...]:

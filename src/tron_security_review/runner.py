@@ -1266,6 +1266,27 @@ def _has_partial_results(results: Iterable[InvocationResult]) -> bool:
     )
 
 
+def _archive_campaign_attempt(job_dir: Path, result: InvocationResult) -> InvocationResult:
+    """Retain failed diagnostics without letting provisional findings enter intake."""
+    archived = job_dir / "attempts" / "primary"
+    archived.mkdir(parents=True, exist_ok=False)
+    for artifact in job_dir.iterdir():
+        if artifact.name not in {"scan-context.md", "attempts"}:
+            artifact.rename(archived / artifact.name)
+
+    def relocated(path: str | None) -> str | None:
+        return str(archived / Path(path).name) if path is not None else None
+    return replace(
+        result,
+        job_id=result.job_id + "/primary",
+        scan_dir=relocated(result.scan_dir),
+        stdout_path=relocated(result.stdout_path),
+        stderr_path=relocated(result.stderr_path),
+        sarif_path=relocated(result.sarif_path),
+        counts_toward_exit=False,
+    )
+
+
 def run_plan(
     config: AppConfig,
     plan: ScanPlan,
@@ -1389,36 +1410,73 @@ def run_plan(
                 )
             )
         else:
-            results.append(
-                _invoke_scan(
-                    config=config,
-                    job=job,
-                    plan=plan,
-                    target=target,
-                    attempt_dir=job_dir,
-                    prompt_path=prompt_path,
-                    knowledge_bases=knowledge_bases,
-                    environment=environment,
-                    auth=auth,
-                    cli_bin=cli_bin,
-                    base_commit=base_commit,
-                    head_commit=head_commit,
-                    dry_run=dry_run,
-                    provider_override=provider_override,
-                    model_override=model_override,
-                    timeout_seconds=(
-                        (
-                            job.profile.vm_shard_max_time_hours
-                            if job.campaign_shard
-                            and job.profile.vm_shard_max_time_hours is not None
-                            else job.profile.max_time_hours
-                        )
-                        or 0
-                    )
-                    * 3600
-                    or None,
-                )
+            shard_timeout = (
+                (
+                    job.profile.vm_shard_max_time_hours
+                    if job.campaign_shard and job.profile.vm_shard_max_time_hours is not None
+                    else job.profile.max_time_hours
+                ) or 0
+            ) * 3600 or None
+            shard_started = time.monotonic()
+            primary = _invoke_scan(
+                config=config,
+                job=job,
+                plan=plan,
+                target=target,
+                attempt_dir=job_dir,
+                prompt_path=prompt_path,
+                knowledge_bases=knowledge_bases,
+                environment=environment,
+                auth=auth,
+                cli_bin=cli_bin,
+                base_commit=base_commit,
+                head_commit=head_commit,
+                dry_run=dry_run,
+                provider_override=provider_override,
+                model_override=model_override,
+                timeout_seconds=shard_timeout,
             )
+            # A startup stall may be transient. Retry only a campaign shard,
+            # only once, within its original wall-clock and measured cost budget.
+            # A completed partial scan or usage/safety failure is not a stall.
+            remaining = (
+                shard_timeout - max(primary.duration_seconds or 0, time.monotonic() - shard_started)
+                if shard_timeout is not None and primary.duration_seconds is not None
+                else 0
+            )
+            supports_cost = _cli_cost_limit_supported(
+                provider_override or job.profile.provider,
+                model_override or job.profile.model,
+            )
+            cost_available = not supports_cost or (
+                primary.estimated_cost is not None
+                and job.profile.max_cost is not None
+                and primary.estimated_cost < job.profile.max_cost
+            )
+            if (
+                not dry_run and job.campaign_shard and job.profile.max_retries
+                and primary.termination_reason == "first_response_timeout"
+                and _recovery_reason(primary) == "first_response_timeout"
+                and remaining >= (job.profile.first_response_timeout_minutes or 0) * 60
+                and cost_available
+            ):
+                results.append(_archive_campaign_attempt(job_dir, primary))
+                results.append(_invoke_scan(
+                    config=config, job=job, plan=plan, target=target,
+                    attempt_dir=job_dir, prompt_path=prompt_path,
+                    knowledge_bases=knowledge_bases, environment=environment,
+                    auth=auth, cli_bin=cli_bin, base_commit=base_commit,
+                    head_commit=head_commit, dry_run=False,
+                    provider_override=provider_override, model_override=model_override,
+                    max_cost_override=(
+                        job.profile.max_cost - primary.estimated_cost
+                        if supports_cost and primary.estimated_cost is not None
+                        else None
+                    ),
+                    timeout_seconds=remaining,
+                ))
+            else:
+                results.append(primary)
 
     excluded_scan_dirs = (
         Path(result.scan_dir)

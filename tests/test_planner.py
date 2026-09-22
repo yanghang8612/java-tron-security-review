@@ -101,11 +101,11 @@ class PlannerTests(unittest.TestCase):
                 enabled_profiles=("triage",),
             )
 
-    def test_discovery_has_more_reasoning_than_per_finding_verification(self) -> None:
+    def test_daily_discovery_uses_bounded_high_reasoning(self) -> None:
         plan = build_plan(self.config, "daily-tvm", day_of_year=1)
         triage, verifier = [job.profile for job in plan.jobs]
         self.assertEqual((triage.model, triage.effort, triage.max_cost),
-                         ("gpt-6-astra", "max", 200.0))
+                         ("gpt-6-astra", "xhigh", 200.0))
         self.assertEqual((verifier.model, verifier.effort), ("gpt-6-astra", "xhigh"))
         self.assertTrue(verifier.per_finding)
         self.assertEqual(verifier.candidate_source_profile, "triage")
