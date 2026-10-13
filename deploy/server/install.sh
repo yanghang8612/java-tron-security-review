@@ -69,6 +69,7 @@ OUTPUT_ROOT=/var/lib/java-tron-security-review/scans
 WORK_ROOT=/var/lib/java-tron-security-review/work
 AUTH_ROOT=/var/lib/java-tron-security-review/auth
 GROK_AUTH_ROOT=/var/lib/java-tron-security-review/grok-auth
+KNOWLEDGE_ROOT=/var/lib/java-tron-security-review/knowledge
 SCANNER_USER=jtsr-scanner
 SCANNER_UID=10001
 SCANNER_GID=10001
@@ -121,6 +122,7 @@ install -d -m 0700 -o "$SCANNER_UID" -g "$SCANNER_GID" "$OUTPUT_ROOT"
 install -d -m 0700 -o root -g root "$WORK_ROOT"
 install -d -m 0700 -o "$SCANNER_UID" -g "$SCANNER_GID" "$AUTH_ROOT"
 install -d -m 0700 -o "$SCANNER_UID" -g "$SCANNER_GID" "$GROK_AUTH_ROOT"
+install -d -m 0700 -o "$SCANNER_UID" -g "$SCANNER_GID" "$KNOWLEDGE_ROOT"
 
 install -m 0755 "$SCRIPT_DIR/run-daily-tvm.sh" "$LIBEXEC_DIR/run-daily-tvm"
 install -m 0755 "$SCRIPT_DIR/auth-chatgpt.sh" "$LIBEXEC_DIR/auth-chatgpt"

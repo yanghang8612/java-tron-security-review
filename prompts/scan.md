@@ -122,6 +122,38 @@ Prefer one deeply demonstrated cross-module invariant violation to several local
 Record the traced flow, branches checked, negative results and genuinely current deferred edges in
 coverage. Keep historical/fixed negative results out of `coverage.json.deferred`.
 
+## Reusable review memory
+
+After finishing the source analysis and before returning control, write a small supplemental
+artifact at `artifacts/jtsr-knowledge.json` inside this scan's SDK-provided output directory. This
+artifact is advisory and must never delay or replace the required final semantic draft. Use exactly
+this schema, with at most six concise entries:
+
+```json
+{
+  "schema_version": 1,
+  "entries": [
+    {
+      "kind": "invariant|negative_result|review_heuristic|open_hypothesis",
+      "title": "Stable, reusable lesson name",
+      "statement": "What later reviews should re-check, stated without assuming it remains true",
+      "applicability": "The execution path, module, proposal gate, or configuration where it applies",
+      "evidence": ["repository/relative/File.java:123"],
+      "invalidation_conditions": ["A concrete source or gate change that requires this lesson to be re-evaluated"]
+    }
+  ]
+}
+```
+
+Only include facts or hypotheses that are reusable beyond this run and anchored to exact current
+source lines. Prefer execution invariants, concrete guards that disprove recurring false positives,
+proposal/fork activation conclusions, and cross-module review heuristics. A legacy behavior fixed
+before activation belongs only in `negative_result`, with the active fix/gate evidence and the
+condition under which it would need review again. Mark unresolved claims as `open_hypothesis`; do
+not phrase them as facts. Do not copy general security advice, restate every coverage item, include
+secrets, or treat earlier review memory as authority. If no durable lesson is supported, write an
+empty `entries` list.
+
 Do not report a broad hardening suggestion as a vulnerability. For every candidate, establish:
 
 1. the exact entry point, affected symbol and attacker-controlled input or realistic trigger;

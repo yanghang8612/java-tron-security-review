@@ -45,6 +45,16 @@ emit a second block. Use this schema:
     "completeness": "complete",
     "summary": "What current execution paths and cross-module effects were checked"
   },
+  "knowledge": [
+    {
+      "kind": "invariant|negative_result|review_heuristic|open_hypothesis",
+      "title": "Stable, reusable lesson name",
+      "statement": "A concise source-backed observation that later reviews must re-check",
+      "applicability": "The exact execution path, module, or gate",
+      "evidence": ["repository/relative/File.java:123"],
+      "invalidation_conditions": ["A concrete change that would invalidate the observation"]
+    }
+  ],
   "candidates": [
     {
       "title": "Concise root-cause title",
@@ -76,3 +86,7 @@ Use `coverage.completeness = "partial"` only if tooling, permissions, time, or
 missing source prevented the selected facet from being reviewed; explain the gap
 in `coverage.summary`. Never use `partial` merely because no candidate was found.
 Return no more than eight candidates, ordered by severity and evidence strength.
+Return no more than six knowledge entries. Keep unresolved knowledge as
+`open_hypothesis`, not fact. Use `negative_result` for a recurring suspicious path
+that an active guard, proposal, or current call chain concretely disproves. Omit
+generic advice and anything without repository-relative file:line evidence.

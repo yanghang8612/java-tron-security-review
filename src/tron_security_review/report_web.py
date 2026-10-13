@@ -30,6 +30,7 @@ ROOT_FILES = {
     "run-manifest.json",
     "aggregate.json",
     "coverage-manifest.json",
+    "knowledge-delta.json",
     "target-revision.txt",
 }
 ASSETS = Path(__file__).with_name("web")
@@ -52,6 +53,8 @@ def allowed_artifact(path: str) -> bool:
         return parts[1] in {"results.sarif", "verification-manifest.json"}
     if len(parts) == 3:
         return parts[1] == "results" and parts[2] in RESULT_FILES
+    if len(parts) == 4:
+        return parts[1:] == ["results", "artifacts", "jtsr-knowledge.json"]
     if len(parts) == 5:
         return parts[1] == "candidates" and parts[4] == "results.sarif"
     if len(parts) == 6:
@@ -250,6 +253,7 @@ class ReportStore:
         coverages = []
         deferred = []
         verification = []
+        knowledge = self.document(run_id, "knowledge-delta.json")
         for item in artifacts:
             if item["path"].endswith("/verification-manifest.json"):
                 document = self.document(run_id, item["path"])
@@ -339,6 +343,7 @@ class ReportStore:
                 "finding_groups": groups,
                 "coverage": coverages, "deferred": deferred,
                 "verification": verification, "followups": followups,
+                "knowledge": knowledge if isinstance(knowledge, dict) else None,
                 "vm_campaign": vm_campaign if isinstance(vm_campaign, dict) else None}
 
     def archive(self, run_id: str) -> bytes:

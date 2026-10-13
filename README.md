@@ -20,6 +20,8 @@ SARIF, and keeps scan state outside the target worktree. It is advisory and read
   incremental scans and a seven-domain weekly deep-scan rotation remain separate.
 - A hard production-reachability admission gate that keeps pre-activation, fixed-before-activation,
   historical-replay and test-only proposal branches out of findings and candidate-shaped deferred work.
+- A bounded daily review-memory loop: source-anchored lessons and explicit verifier verdicts are
+  deduplicated with commit provenance, then mounted read-only as orientation for later scans.
 - Release/manual full-repository scan modes.
 - Mandatory release/runtime reachability policy for every finding.
 - Environment filtering so the scanner does not inherit unrelated CI credentials.
@@ -205,6 +207,10 @@ system and no cloud resources are created by this repository.
 
 Optional local knowledge comes from the sibling `java-tron-kb` repository when present. The KB is
 orientation only; its draft claims must be rechecked against the target source.
+The single-server runner also maintains a private runtime memory under
+`/var/lib/java-tron-security-review/knowledge`. Failed or verdict-free reviews are excluded,
+open hypotheses remain explicitly non-authoritative, and only the bounded rendered digest is fed
+back into later scans.
 
 ## Development and verification
 

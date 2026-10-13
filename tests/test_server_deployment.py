@@ -72,6 +72,18 @@ class ServerDeploymentTests(unittest.TestCase):
         self.assertIn("flock -n 9", script)
         self.assertRegex(script, re.compile(r"JTSR_RETENTION_DAYS.*90"))
 
+    def test_daily_runner_persists_and_reuses_bounded_review_memory(self) -> None:
+        script = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")
+        environment = (SERVER / "jtsr.env.example").read_text(encoding="utf-8")
+        installer = (SERVER / "install.sh").read_text(encoding="utf-8")
+        self.assertIn("JTSR_KNOWLEDGE_ROOT", script)
+        self.assertIn("review-memory.md,readonly", script)
+        self.assertIn("--knowledge-base /scan/knowledge/review-memory.md", script)
+        self.assertIn("jtsr knowledge-update", script)
+        self.assertIn("--network none", script)
+        self.assertIn("JTSR_KNOWLEDGE_ROOT=", environment)
+        self.assertIn("KNOWLEDGE_ROOT=/var/lib/java-tron-security-review/knowledge", installer)
+
     def test_daily_runner_allows_a_validated_one_run_scope_override(self) -> None:
         script = (SERVER / "run-daily-tvm.sh").read_text(encoding="utf-8")
         environment = (SERVER / "jtsr.env.example").read_text(encoding="utf-8")

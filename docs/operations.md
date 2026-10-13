@@ -137,6 +137,9 @@ current path and names one precise missing proof.
   backup is explicitly approved for account credentials and encrypted accordingly.
 - Monitor disk use under `/var/lib/java-tron-security-review/scans`; the default retention is 90
   days and only the daily-run naming scheme is pruned.
+- Inspect each run's `knowledge-delta.json` in the report portal when auditing what was learned.
+  The persistent `knowledge-index.json` and bounded `review-memory.md` are private runtime state
+  under `/var/lib/java-tron-security-review/knowledge`; back them up separately from credentials.
 - If a node shares the host, watch its latency and memory during the first scans and lower the
   container limits if necessary.
 

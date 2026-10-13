@@ -189,12 +189,21 @@ The host wrapper writes results beneath:
     ├── target-revision.txt
     ├── run-manifest.json
     ├── aggregate.json
+    ├── knowledge-delta.json
     ├── triage-<tvm-facet>/
     ├── triage-grok-<tvm-facet>/
     └── verifier-<tvm-facet>/
         ├── verification-manifest.json
         └── candidates/<candidate>/<model-attempt>/
 ```
+
+Each completed daily run extracts a provenance-bearing knowledge delta. The persistent index and
+the bounded Markdown digest used by later scans live separately under
+`/var/lib/java-tron-security-review/knowledge/`. The digest is mounted read-only during scanning;
+an isolated, network-disabled post-processing container is the only daily step that updates it.
+Explicit supported/rejected/insufficient-evidence verdicts retain their status, while failed,
+blocked, interrupted, and verdict-free attempts are never admitted. Set `JTSR_KNOWLEDGE_ROOT` only
+to another dedicated private directory; do not overlap it with reports, work trees, or auth stores.
 
 Directories matching the daily-run naming scheme are deleted after 90 days by default. The prune
 selector does not match `.state`, status files, symlinks, or arbitrary directories. Change

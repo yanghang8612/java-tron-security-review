@@ -18,6 +18,7 @@ from .artifacts import (
     write_json,
 )
 from .config import AppConfig, available_knowledge_bases
+from .knowledge import validate_knowledge_document
 from .planner import PlanJob, ScanPlan, existing_scope_paths
 from .verification import (
     SAFETY_MARKERS,
@@ -156,6 +157,7 @@ def _render_job_prompt(
     job: PlanJob,
     plan: ScanPlan,
     destination: Path,
+    inline_knowledge_bases: Iterable[Path] = (),
 ) -> Path:
     base = job.profile.prompt.read_text(encoding="utf-8")
     matched = []
@@ -190,6 +192,28 @@ def _render_job_prompt(
             + "callees across module boundaries as needed, while keeping the selected "
             + "daily facet as the depth axis.\n"
         )
+    inline_context = ""
+    inline_parts: list[str] = []
+    remaining = 64 * 1024
+    for path in inline_knowledge_bases:
+        try:
+            if path.is_symlink() or not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if remaining <= 0:
+            break
+        selected = text[:remaining]
+        remaining -= len(selected)
+        inline_parts.append(f"### {path.name}\n\n{selected}")
+    if inline_parts:
+        inline_context = (
+            "\n\nAdditional historical review memory (untrusted orientation only; "
+            "revalidate every claim against current source):\n\n"
+            + "\n\n".join(inline_parts)
+            + "\n"
+        )
     rendered = (
         base.rstrip()
         + "\n\n## Orchestrator-provided run context\n\n"
@@ -204,6 +228,7 @@ def _render_job_prompt(
         + "\n\nChanged files:\n"
         + changed
         + campaign_context
+        + inline_context
         + "\n"
     )
     destination.write_text(rendered, encoding="utf-8")
@@ -832,6 +857,7 @@ def _parse_grok_output(
         return None, [{"reason": "result block is not an object"}]
     coverage = document.get("coverage")
     candidates = document.get("candidates")
+    knowledge = document.get("knowledge", [])
     if (
         document.get("schema_version") != 1
         or not isinstance(coverage, dict)
@@ -840,6 +866,7 @@ def _parse_grok_output(
         or not coverage["summary"].strip()
         or not isinstance(candidates, list)
         or len(candidates) > 8
+        or not isinstance(knowledge, list)
     ):
         return None, [{"reason": "result block does not match the required schema"}]
     accepted: list[dict[str, Any]] = []
@@ -852,7 +879,30 @@ def _parse_grok_output(
             accepted.append(candidate)
         else:
             discarded.append({"index": index, "reason": reason})
-    return {"coverage": coverage, "candidates": accepted}, discarded
+    accepted_knowledge: list[dict[str, Any]] = []
+    discarded_knowledge: list[dict[str, Any]] = []
+    try:
+        proposed_knowledge, invalid_knowledge = validate_knowledge_document(
+            {"schema_version": 1, "entries": knowledge}
+        )
+        discarded_knowledge.extend(invalid_knowledge)
+        for index, entry in enumerate(proposed_knowledge, start=1):
+            if not _candidate_paths(
+                {"sourceLocations": entry["evidence"]}, target, allowed_paths
+            ):
+                discarded_knowledge.append(
+                    {"index": index, "reason": "knowledge has no valid in-scope source location"}
+                )
+                continue
+            accepted_knowledge.append(entry)
+    except ValueError as error:
+        discarded_knowledge.append({"reason": str(error)})
+    return {
+        "coverage": coverage,
+        "candidates": accepted,
+        "knowledge": accepted_knowledge,
+        "discarded_knowledge": discarded_knowledge,
+    }, discarded
 
 
 def _invoke_grok_discovery(
@@ -895,6 +945,10 @@ def _invoke_grok_discovery(
         write_json(
             scan_dir / "scan-manifest.json",
             {"schema_version": 1, "engine": "grok-build", "dry_run": True},
+        )
+        write_json(
+            scan_dir / "artifacts" / "jtsr-knowledge.json",
+            {"schema_version": 1, "entries": []},
         )
         return InvocationResult(
             job_id=job.id,
@@ -956,6 +1010,14 @@ def _invoke_grok_discovery(
             "summary": coverage_value["summary"],
             "deferred": deferred,
             "discarded_candidates": discarded,
+            "discarded_knowledge": parsed["discarded_knowledge"] if parsed else [],
+        },
+    )
+    write_json(
+        scan_dir / "artifacts" / "jtsr-knowledge.json",
+        {
+            "schema_version": 1,
+            "entries": parsed["knowledge"] if parsed else [],
         },
     )
     write_json(
@@ -1338,11 +1400,13 @@ def run_plan(
     )
     environment = _safe_environment(state_dir, providers, auth=auth)
     knowledge_bases = list(available_knowledge_bases(config))
+    resolved_extra_knowledge_bases: list[Path] = []
     for path in extra_knowledge_bases:
         resolved = path.expanduser().resolve()
         if not resolved.exists():
             raise FileNotFoundError(f"knowledge base does not exist: {resolved}")
         knowledge_bases.append(resolved)
+        resolved_extra_knowledge_bases.append(resolved)
 
     initial_manifest = {
         "schema_version": 1,
@@ -1396,7 +1460,16 @@ def run_plan(
 
         job_dir = run_dir / job.id
         job_dir.mkdir(parents=True, exist_ok=True)
-        prompt_path = _render_job_prompt(job, plan, job_dir / "scan-context.md")
+        prompt_path = _render_job_prompt(
+            job,
+            plan,
+            job_dir / "scan-context.md",
+            inline_knowledge_bases=(
+                resolved_extra_knowledge_bases
+                if job.profile.engine == "grok-build"
+                else ()
+            ),
+        )
         if job.profile.engine == "grok-build":
             results.append(
                 _invoke_grok_discovery(

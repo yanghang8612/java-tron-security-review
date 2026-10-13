@@ -78,7 +78,7 @@ async function loadDetail(id) {
     if (data.execution_kind === "verification_only") panel.append(el("p", "本次仅复核原扫描的已有候选，不代表重新完成全部范围扫描；原报告与覆盖缺口保留不变。", "notice"));
     if (data.retry_of_run_id) panel.append(el("p", "仅重试前次复核失败的候选；已完成结论保留在前次报告：" + data.retry_of_run_id, "notice"));
     const navigation = el("nav", null, "detail-nav"); navigation.setAttribute("aria-label", "报告内容导航");
-    navigation.append(navButton("概览", "report-summary"), navButton("独立复核", "report-reviews"), navButton("正式发现", "report-findings"), navButton("待验证线索", "report-deferred"), navButton("覆盖记录", "report-coverage"), navButton("报告文件", "report-files")); panel.append(navigation);
+    navigation.append(navButton("概览", "report-summary"), navButton("独立复核", "report-reviews"), navButton("正式发现", "report-findings"), navButton("待验证线索", "report-deferred"), navButton("审查知识", "report-knowledge"), navButton("覆盖记录", "report-coverage"), navButton("报告文件", "report-files")); panel.append(navigation);
     const filter = el("div", null, "finding-filter"), searchLabel = el("label", "筛选发现与线索"), search = el("input"), count = el("span", "", "small muted");
     search.id = "finding-search"; search.type = "search"; search.placeholder = "搜索标题、文件、证据或编号"; searchLabel.htmlFor = search.id;
     count.setAttribute("role", "status"); filter.append(searchLabel, search, count); panel.append(filter);
@@ -100,6 +100,10 @@ async function loadDetail(id) {
     const deferred = section(panel, "待验证线索 · " + data.deferred.length, "report-deferred");
     data.deferred.forEach((entry, index) => {const card = ReportView.deferred(entry, index + 1); deferred.append(card); searchable.push([card, JSON.stringify(entry).toLowerCase()]);});
     if (!data.deferred.length) deferred.append(el("div", "覆盖文件中未记录待验证线索。", "empty"));
+    const knowledgeEntries = data.knowledge?.entries || [], knowledge = section(panel, "本轮沉淀知识 · " + knowledgeEntries.length, "report-knowledge");
+    if (data.knowledge?.admission_policy) knowledge.append(el("p", data.knowledge.admission_policy, "notice"));
+    knowledgeEntries.forEach((entry, index) => {const node = el("details", null, "coverage-entry"), body = el("div", null, "coverage-body"); node.append(el("summary", (entry.title || "未命名知识") + " · " + (entry.kind || "unknown"))); ReportView.structured(body, entry); node.append(body); knowledge.append(node); searchable.push([node, JSON.stringify(entry).toLowerCase()]);});
+    if (!knowledgeEntries.length) knowledge.append(el("div", data.knowledge ? "本轮没有通过准入门槛的新知识；不会把失败或未验证输出写入后续提示。" : "该运行尚未执行知识沉淀步骤。", "empty"));
     const noMatch = el("p", "没有匹配的发现或线索。清空搜索可恢复全部条目。", "empty"); noMatch.hidden = true; panel.append(noMatch);
     const applyFilter = () => {const query = search.value.trim().toLowerCase(); let visible = 0; for (const [card, text] of searchable) {card.hidden = !text.includes(query); if (!card.hidden) visible++;} count.textContent = "显示 " + visible + " / " + searchable.length + " 条"; noMatch.hidden = !query || visible > 0;};
     search.addEventListener("input", applyFilter); applyFilter();

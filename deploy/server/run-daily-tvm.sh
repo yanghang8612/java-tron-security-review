@@ -44,6 +44,7 @@ JTSR_OUTPUT_ROOT="${JTSR_OUTPUT_ROOT:-/var/lib/java-tron-security-review/scans}"
 JTSR_WORK_ROOT="${JTSR_WORK_ROOT:-/var/lib/java-tron-security-review/work}"
 JTSR_AUTH_ROOT="${JTSR_AUTH_ROOT:-/var/lib/java-tron-security-review/auth}"
 JTSR_GROK_AUTH_ROOT="${JTSR_GROK_AUTH_ROOT:-/var/lib/java-tron-security-review/grok-auth}"
+JTSR_KNOWLEDGE_ROOT="${JTSR_KNOWLEDGE_ROOT:-/var/lib/java-tron-security-review/knowledge}"
 JTSR_GROK_SANDBOX_PROFILE="${JTSR_GROK_SANDBOX_PROFILE:-strict}"
 JTSR_RETENTION_DAYS="${JTSR_RETENTION_DAYS:-90}"
 JTSR_MEMORY_LIMIT="${JTSR_MEMORY_LIMIT:-8g}"
@@ -61,12 +62,14 @@ JTSR_OUTPUT_ROOT="$(realpath -m -- "$JTSR_OUTPUT_ROOT")"
 JTSR_WORK_ROOT="$(realpath -m -- "$JTSR_WORK_ROOT")"
 JTSR_AUTH_ROOT="$(realpath -m -- "$JTSR_AUTH_ROOT")"
 JTSR_GROK_AUTH_ROOT="$(realpath -m -- "$JTSR_GROK_AUTH_ROOT")"
+JTSR_KNOWLEDGE_ROOT="$(realpath -m -- "$JTSR_KNOWLEDGE_ROOT")"
 JTSR_SECCOMP_PROFILE="$(realpath -m -- "$JTSR_SECCOMP_PROFILE")"
 
 validate_absolute_directory JTSR_OUTPUT_ROOT "$JTSR_OUTPUT_ROOT"
 validate_absolute_directory JTSR_WORK_ROOT "$JTSR_WORK_ROOT"
 validate_absolute_directory JTSR_AUTH_ROOT "$JTSR_AUTH_ROOT"
 validate_absolute_directory JTSR_GROK_AUTH_ROOT "$JTSR_GROK_AUTH_ROOT"
+validate_absolute_directory JTSR_KNOWLEDGE_ROOT "$JTSR_KNOWLEDGE_ROOT"
 [[ "$JTSR_SECCOMP_PROFILE" == /* ]] || fail "JTSR_SECCOMP_PROFILE must be an absolute path"
 [[ -f "$JTSR_SECCOMP_PROFILE" && ! -L "$JTSR_SECCOMP_PROFILE" ]] || \
   fail "JTSR_SECCOMP_PROFILE must be a regular non-symlink file"
@@ -83,6 +86,12 @@ validate_absolute_directory JTSR_GROK_AUTH_ROOT "$JTSR_GROK_AUTH_ROOT"
 [[ "$JTSR_WORK_ROOT" != "$JTSR_GROK_AUTH_ROOT"/* ]] || fail "work root must not be inside the Grok auth root"
 [[ "$JTSR_GROK_AUTH_ROOT" != "$JTSR_AUTH_ROOT" && "$JTSR_GROK_AUTH_ROOT" != "$JTSR_AUTH_ROOT"/* ]] || fail "Grok and ChatGPT auth roots must differ"
 [[ "$JTSR_AUTH_ROOT" != "$JTSR_GROK_AUTH_ROOT"/* ]] || fail "ChatGPT auth root must not be inside the Grok auth root"
+for isolated_root in "$JTSR_OUTPUT_ROOT" "$JTSR_WORK_ROOT" "$JTSR_AUTH_ROOT" "$JTSR_GROK_AUTH_ROOT"; do
+  [[ "$JTSR_KNOWLEDGE_ROOT" != "$isolated_root" && "$JTSR_KNOWLEDGE_ROOT" != "$isolated_root"/* ]] || \
+    fail "knowledge root must be separate from output, work, and auth roots"
+  [[ "$isolated_root" != "$JTSR_KNOWLEDGE_ROOT"/* ]] || \
+    fail "output, work, and auth roots must not be inside the knowledge root"
+done
 [[ "$JTSR_IMAGE" =~ ^[A-Za-z0-9][A-Za-z0-9._/:@-]*$ ]] || fail "JTSR_IMAGE has an invalid format"
 [[ "$JTSR_DOCKER_NETWORK" =~ ^[A-Za-z0-9][A-Za-z0-9_.-]*$ ]] || fail "JTSR_DOCKER_NETWORK has an invalid format"
 [[ "$JTSR_RETENTION_DAYS" =~ ^[1-9][0-9]*$ ]] || fail "JTSR_RETENTION_DAYS must be a positive integer"
@@ -107,6 +116,7 @@ if [[ -r /proc/sys/user/max_user_namespaces ]] && \
 fi
 
 install -d -m 0700 -o "$JTSR_SCANNER_UID" -g "$JTSR_SCANNER_GID" "$JTSR_OUTPUT_ROOT"
+install -d -m 0700 -o "$JTSR_SCANNER_UID" -g "$JTSR_SCANNER_GID" "$JTSR_KNOWLEDGE_ROOT"
 install -d -m 0700 -o root -g root "$JTSR_WORK_ROOT"
 
 exec 9>"$JTSR_WORK_ROOT/daily-tvm.lock"
@@ -135,6 +145,7 @@ fi
 
 RUNTIME_DOCKER_ARGS=()
 RUNTIME_SCAN_ARGS=()
+KNOWLEDGE_SCAN_ARGS=()
 
 case "$JTSR_PROVIDER" in
   openai)
@@ -341,6 +352,14 @@ else
   DOCKER_ARGS+=(--mount "type=bind,src=$JTSR_OUTPUT_ROOT,dst=/scan/output")
 fi
 
+KNOWLEDGE_MEMORY="$JTSR_KNOWLEDGE_ROOT/review-memory.md"
+if [[ -z "$JTSR_VERIFY_SOURCE_RUN" && -f "$KNOWLEDGE_MEMORY" && ! -L "$KNOWLEDGE_MEMORY" ]]; then
+  DOCKER_ARGS+=(
+    --mount "type=bind,src=$KNOWLEDGE_MEMORY,dst=/scan/knowledge/review-memory.md,readonly"
+  )
+  KNOWLEDGE_SCAN_ARGS+=(--knowledge-base /scan/knowledge/review-memory.md)
+fi
+
 for proxy_name in HTTPS_PROXY HTTP_PROXY ALL_PROXY NO_PROXY; do
   if [[ -n "${!proxy_name:-}" ]]; then
     DOCKER_ARGS+=(--env "$proxy_name")
@@ -359,6 +378,7 @@ SCAN_ARGS=(
   --enable-profile triage-grok
 )
 SCAN_ARGS+=("${RUNTIME_SCAN_ARGS[@]}")
+SCAN_ARGS+=("${KNOWLEDGE_SCAN_ARGS[@]}")
 if [[ -n "$JTSR_SCOPE" ]]; then
   SCAN_ARGS+=(--scope "$JTSR_SCOPE")
 fi
@@ -385,6 +405,33 @@ set +e
 docker "${DOCKER_ARGS[@]}" "$JTSR_IMAGE" "${SCAN_ARGS[@]}"
 SCAN_EXIT=$?
 set -e
+
+if [[ -z "$JTSR_VERIFY_SOURCE_RUN" && -f "$RUN_DIR/run-manifest.json" ]] && \
+   grep -q '"completed_at"' "$RUN_DIR/run-manifest.json"; then
+  set +e
+  docker run --rm \
+    --name "jtsr-knowledge-${RUN_ID,,}" \
+    --user "$JTSR_SCANNER_UID:$JTSR_SCANNER_GID" \
+    --read-only \
+    --cap-drop ALL \
+    --security-opt no-new-privileges \
+    --pids-limit 64 \
+    --memory 512m \
+    --cpus 1 \
+    --network none \
+    --tmpfs "/tmp:rw,nosuid,nodev,noexec,size=64m,uid=$JTSR_SCANNER_UID,gid=$JTSR_SCANNER_GID" \
+    --mount "type=bind,src=$RUN_DIR,dst=/scan/run" \
+    --mount "type=bind,src=$JTSR_KNOWLEDGE_ROOT,dst=/scan/knowledge" \
+    "$JTSR_IMAGE" jtsr knowledge-update --run-dir /scan/run --store /scan/knowledge
+  KNOWLEDGE_EXIT=$?
+  set -e
+  if [[ "$KNOWLEDGE_EXIT" -ne 0 ]]; then
+    printf 'java-tron-security-review: knowledge update failed with exit %d\n' "$KNOWLEDGE_EXIT" >&2
+    if [[ "$SCAN_EXIT" -eq 0 ]]; then
+      SCAN_EXIT=1
+    fi
+  fi
+fi
 
 COMPLETED_AT="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 STATUS_TMP="$JTSR_OUTPUT_ROOT/.last-run.json.$$"

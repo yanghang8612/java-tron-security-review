@@ -104,6 +104,8 @@ class ReportStoreTests(unittest.TestCase):
         self.assertTrue(allowed_artifact("primary/results/report.md"))
         self.assertTrue(allowed_artifact("deep-vm-execution/results/coverage.json"))
         self.assertTrue(allowed_artifact("coverage-manifest.json"))
+        self.assertTrue(allowed_artifact("knowledge-delta.json"))
+        self.assertTrue(allowed_artifact("triage-tvm-calls/results/artifacts/jtsr-knowledge.json"))
         self.assertFalse(allowed_artifact("triage-tvm-calls/invocation.stderr.log"))
         self.assertFalse(allowed_artifact("../auth.json"))
         with zipfile.ZipFile(io.BytesIO(self.store.archive(RUN))) as archive:

@@ -277,11 +277,23 @@ class RunnerTests(unittest.TestCase):
         document = {
             "schema_version": 1,
             "coverage": {"completeness": "complete", "summary": "Synthetic."},
+            "knowledge": [
+                {
+                    "kind": "review_heuristic",
+                    "title": "Trace dispatch into state commit",
+                    "statement": "Review the full call chain before admitting a local issue.",
+                    "applicability": "TVM execution",
+                    "evidence": [source + ":1"],
+                    "invalidation_conditions": ["The dispatch or repository lifecycle changes."],
+                }
+            ],
             "candidates": [candidate],
         }
         output = "```jtsr-grok-candidates\n" + json.dumps(document) + "\n```"
         parsed, discarded = _parse_grok_output(output, self.target, job.paths, "grok-build")
         self.assertEqual(len(parsed["candidates"]), 1)
+        self.assertEqual(len(parsed["knowledge"]), 1)
+        self.assertFalse(parsed["discarded_knowledge"])
         self.assertFalse(discarded)
         duplicate, duplicate_errors = _parse_grok_output(
             output + "\n" + output, self.target, job.paths, "grok-build"
@@ -669,6 +681,26 @@ class RunnerTests(unittest.TestCase):
         self.assertIn("Selected scope: tvm-state-rollback", rendered)
         self.assertIn("Required analysis focus", rendered)
         self.assertIn("Trace account, contract, code, storage", rendered)
+
+    def test_grok_prompt_receives_bounded_untrusted_runtime_memory(self) -> None:
+        plan = build_plan(
+            self.config,
+            "daily-tvm",
+            day_of_year=4,
+            enabled_profiles=("triage-grok",),
+        )
+        job = next(item for item in plan.jobs if item.profile.engine == "grok-build")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            memory = root / "review-memory.md"
+            memory.write_text("# Prior lesson\nRe-check VM.java:12\n", encoding="utf-8")
+            prompt_path = root / "scan-context.md"
+            from tron_security_review.runner import _render_job_prompt
+
+            _render_job_prompt(job, plan, prompt_path, (memory,))
+            rendered = prompt_path.read_text(encoding="utf-8")
+        self.assertIn("untrusted orientation only", rendered)
+        self.assertIn("Prior lesson", rendered)
 
     def test_chatgpt_scan_command_selects_stored_auth(self) -> None:
         plan = build_plan(self.config, "daily-tvm", day_of_year=1)

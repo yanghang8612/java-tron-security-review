@@ -235,6 +235,13 @@ def cmd_report_auth(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_knowledge_update(args: argparse.Namespace) -> int:
+    from .knowledge import update_knowledge_store
+    result = update_knowledge_store(args.run_dir, args.store)
+    print(json.dumps(result, indent=2, sort_keys=True))
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="jtsr",
@@ -309,6 +316,14 @@ def build_parser() -> argparse.ArgumentParser:
     auth.add_argument("--login-file", required=True, type=_path)
     auth.add_argument("--username", default="reviewer")
     auth.set_defaults(handler=cmd_report_auth)
+
+    knowledge = subparsers.add_parser(
+        "knowledge-update",
+        help="extract trustworthy review lessons and update the persistent scan memory",
+    )
+    knowledge.add_argument("--run-dir", required=True, type=_path)
+    knowledge.add_argument("--store", required=True, type=_path)
+    knowledge.set_defaults(handler=cmd_knowledge_update)
     return parser
 
 
