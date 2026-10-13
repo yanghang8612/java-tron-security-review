@@ -420,9 +420,9 @@ if [[ -z "$JTSR_VERIFY_SOURCE_RUN" && -f "$RUN_DIR/run-manifest.json" ]] && \
     --cpus 1 \
     --network none \
     --tmpfs "/tmp:rw,nosuid,nodev,noexec,size=64m,uid=$JTSR_SCANNER_UID,gid=$JTSR_SCANNER_GID" \
-    --mount "type=bind,src=$RUN_DIR,dst=/scan/run" \
+    --mount "type=bind,src=$RUN_DIR,dst=/scan/runs/$RUN_ID" \
     --mount "type=bind,src=$JTSR_KNOWLEDGE_ROOT,dst=/scan/knowledge" \
-    "$JTSR_IMAGE" jtsr knowledge-update --run-dir /scan/run --store /scan/knowledge
+    "$JTSR_IMAGE" jtsr knowledge-update --run-dir "/scan/runs/$RUN_ID" --store /scan/knowledge
   KNOWLEDGE_EXIT=$?
   set -e
   if [[ "$KNOWLEDGE_EXIT" -ne 0 ]]; then

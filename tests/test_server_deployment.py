@@ -80,6 +80,8 @@ class ServerDeploymentTests(unittest.TestCase):
         self.assertIn("review-memory.md,readonly", script)
         self.assertIn("--knowledge-base /scan/knowledge/review-memory.md", script)
         self.assertIn("jtsr knowledge-update", script)
+        self.assertIn('dst=/scan/runs/$RUN_ID', script)
+        self.assertIn('--run-dir "/scan/runs/$RUN_ID"', script)
         self.assertIn("--network none", script)
         self.assertIn("JTSR_KNOWLEDGE_ROOT=", environment)
         self.assertIn("KNOWLEDGE_ROOT=/var/lib/java-tron-security-review/knowledge", installer)
